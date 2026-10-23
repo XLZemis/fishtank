@@ -156,14 +156,13 @@ napcat_query: { api: "get_group_member_info", params: { group_id: "...", user_id
 - 不暴露发消息、踢人、改群等写操作；互动请用 `interact`。
 
 ### `tts_speak`（MiMo 语音）
-把一句话合成语音并直接发到当前 scope。
+把一句话合成语音并**直接发到当前 scope**（没有 send 开关）。
 ```
 tts_speak: { text: "主人，晚上好呀", voice: "冰糖", style: "温柔、轻快", tag: "(开心)" }
 ```
 - `voice`：冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean/mimo_default；
 - `style`：自然语言控制语速/情绪/方言/角色；
 - `tag`：音频标签（开心/唱歌等），会拼在正文开头；
-- `send=false` 只生成文件。
 
 ### `message_recall`（撤回）
 ```

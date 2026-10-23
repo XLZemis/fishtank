@@ -952,11 +952,10 @@ def _register_qzone_routes() -> None:
         )
         if not got.get("ok"):
             return JSONResponse(got, status_code=502)
-        if bool(body.get("send", True)):
-            bot = sender.pick_bot(triggers.config().bot_qq)
-            if bot is None:
-                return JSONResponse({**got, "ok": False, "error": "没有在线 bot，只生成了文件"}, status_code=503)
-            got["sent"] = await sender.send_voice(bot, scope, str(got["view_path"]))
+        bot = sender.pick_bot(triggers.config().bot_qq)
+        if bot is None:
+            return JSONResponse({**got, "ok": False, "error": "没有在线 bot"}, status_code=503)
+        got["sent"] = await sender.send_voice(bot, scope, str(got["view_path"]))
         return JSONResponse(got)
 
     @app.post("/message/recall")
