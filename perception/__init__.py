@@ -583,6 +583,8 @@ def _register_qzone_routes() -> None:
         """
         from fastapi.responses import JSONResponse
 
+        if not SETTINGS.debug_routes:
+            return JSONResponse({"ok": False, "error": "debug routes disabled"}, status_code=404)
         if not _ok(request):
             return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
         body = await request.json()

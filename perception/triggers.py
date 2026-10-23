@@ -35,6 +35,7 @@ from typing import Any
 from nonebot import logger
 
 from . import asr, bili, bridge, bus, outbound, segments, sender, sticker
+from .settings import SETTINGS
 
 # 触发器的 8 种类型（唯一合法集合）
 TRIGGER_TYPES = {
@@ -551,14 +552,16 @@ async def prune_sessions_on_boot() -> None:
 # ── G2 武装开关：没有明确武装就只记消息、绝不说话 ────────────────────────────
 # 判据（任一满足即视为武装）：环境变量 PERCEPTION_ARMED=1，或文件
 # /data/qqbot/config/perception-armed 内容为 1/true。误删文件 → 自动闭嘴（fail-safe）。
-ARMED_ENV = "PERCEPTION_ARMED"
-ARMED_FILE = Path("/data/qqbot/config/perception-armed")
+ARMED_ENV = "PERCEPTION_ARMED"          # 兼容旧名
+ARMED_ENV_NEW = "FISHTANK_PERCEPTION_ARMED"
+ARMED_FILE = SETTINGS.armed_file
 
 
 def is_armed() -> bool:
     import os
 
-    if str(os.getenv(ARMED_ENV, "")).strip().lower() in {"1", "true", "yes", "on"}:
+    armed = str(os.getenv(ARMED_ENV_NEW, "") or os.getenv(ARMED_ENV, "")).strip().lower()
+    if armed in {"1", "true", "yes", "on"}:
         return True
     try:
         return ARMED_FILE.read_text(encoding="utf-8").strip().lower() in {"1", "true", "yes", "on"}

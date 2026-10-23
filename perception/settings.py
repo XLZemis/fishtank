@@ -41,6 +41,7 @@ class Settings:
     prod_sticker_view_prefix: str
     exports_dir: Path
     persona_out_prefix: str
+    armed_file: Path
     media_dir: Path
     bridge_url: str
     bridge_token_file: Path
@@ -68,6 +69,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     prod_sticker_view = _first(e, "FISHTANK_PROD_STICKER_VIEW", default="/data/prod-stickers").rstrip("/")
     exports_dir = _path(_first(e, "FISHTANK_EXPORTS_DIR", default=str(data_root / "exports")))
     persona_out_prefix = _first(e, "FISHTANK_PERSONA_OUT_PREFIX", default="/persona/out").rstrip("/")
+    armed_file = _path(_first(e, "FISHTANK_ARMED_FILE", default=str(data_root / "config" / "perception-armed")))
     media_dir = _path(_first(e, "FISHTANK_MEDIA_DIR", default=str(persona_root / "media")))
     bridge_url = _first(e, "FISHTANK_BRIDGE_URL", "PERSONA_BRIDGE_URL", default="http://dsh-persona:13101").rstrip("/")
     bridge_token = _path(
@@ -93,6 +95,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         prod_sticker_view_prefix=prod_sticker_view,
         exports_dir=exports_dir,
         persona_out_prefix=persona_out_prefix,
+        armed_file=armed_file,
         media_dir=media_dir,
         bridge_url=bridge_url,
         bridge_token_file=bridge_token,
