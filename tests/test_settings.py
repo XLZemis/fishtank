@@ -16,6 +16,12 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(Path("/data/persona/stickers"), s.own_sticker_root)
         self.assertEqual("", s.owner_qq)
         self.assertEqual("http://dsh-persona:13101", s.bridge_url)
+        self.assertEqual(24, s.media_batch_limit)
+        self.assertEqual(12, s.media_prefetch_limit)
+        self.assertEqual(24, s.media_prompt_limit)
+        self.assertEqual(24, s.media_batch_limit)
+        self.assertEqual(12, s.media_prefetch_limit)
+        self.assertEqual(24, s.media_prompt_limit)
 
     def test_overrides_and_derived_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

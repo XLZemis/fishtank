@@ -64,6 +64,9 @@ class Settings:
     trigger_refresh_seconds: int
     roster_interval_seconds: int
     roster_members_per_group: int
+    media_batch_limit: int
+    media_prefetch_limit: int
+    media_prompt_limit: int
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -122,6 +125,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     trigger_refresh = _int(("FISHTANK_TRIGGER_REFRESH_S",), 60)
     roster_interval = _int(("FISHTANK_ROSTER_INTERVAL_S",), 6 * 3600)
     roster_members = _int(("FISHTANK_ROSTER_MEMBERS_PER_GROUP",), 12)
+    media_batch = _int(("FISHTANK_MEDIA_BATCH_LIMIT",), 24)
+    media_prefetch = _int(("FISHTANK_MEDIA_PREFETCH_LIMIT",), 12)
+    media_prompt = _int(("FISHTANK_MEDIA_PROMPT_LIMIT",), 24)
     return Settings(
         data_root=data_root,
         persona_root=persona_root,
@@ -157,6 +163,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         trigger_refresh_seconds=trigger_refresh,
         roster_interval_seconds=roster_interval,
         roster_members_per_group=roster_members,
+        media_batch_limit=media_batch,
+        media_prefetch_limit=media_prefetch,
+        media_prompt_limit=media_prompt,
     )
 
 

@@ -47,4 +47,14 @@ class TestParseSegments(unittest.TestCase):
         parsed = segments.parse_segments([{"type": "image", "data": {"url": "https://example.com/a.jpg"}}])
         self.assertEqual(1, len(parsed.media))
         self.assertEqual("image", parsed.media[0].kind)
+
+    def test_multiple_images_are_all_kept(self):
+        message = [
+            {"type": "image", "data": {"url": f"https://example.com/{i}.jpg", "file": f"{i}.jpg"}}
+            for i in range(10)
+        ]
+        parsed = segments.parse_segments(message)
+        self.assertEqual(10, len(parsed.media))
+        self.assertIn("{{M0}}", parsed.text)
+        self.assertIn("{{M9}}", parsed.text)
         self.assertIn("{{M0}}", parsed.text)

@@ -675,8 +675,12 @@ async def send_stats() -> dict[str, Any]:
 # ── 媒体（图片/视频/卡片/合并转发）────────────────────────────────────────────
 
 
-async def media_since(scope: str, after_seq: int, limit: int = 12) -> list[dict[str, Any]]:
-    """取某批消息里的媒体（给决策前"取回图片"用）"""
+async def media_since(scope: str, after_seq: int, limit: int | None = None) -> list[dict[str, Any]]:
+    """取某批消息里的媒体（给决策前"取回图片"用）。
+
+    默认上限由 FISHTANK_MEDIA_BATCH_LIMIT 控制；一条消息带多张图时不能按固定 12 张截断。
+    """
+    limit = int(limit or SETTINGS.media_batch_limit)
     db = _db()
     rows = await (
         await db.execute(

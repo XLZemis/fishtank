@@ -482,7 +482,7 @@ def at_takeover(scope: str) -> bool:
     """
     if not scope.startswith("group:") or not _config.enabled:
         return False
-    # 旧管线（chat.py 的 @ 回复）整体停用，不再拿"桥是否健康"当开关。
+    # 2026-10-17 用户决定：旧管线（chat.py 的 @ 回复）整体停用，不再拿"桥是否健康"当开关。
     # 桥挂了就发一条故障提示（见 run_decision 失败分支），不做可用性兜底。
     return any(t.type == "mention" and t.applies_to(scope) for t in _config.triggers)
 
@@ -513,7 +513,7 @@ async def _decide_with_recovery(scope: str, prompt: str, state: dict[str, Any], 
 
     返回 (result, recovered)。recovered=True 表示"上一次失败但已自愈"，调用方**不要**发故障提示、不要计失败。
     根因：dsh-persona 重启 / 会话被清理后，scopes.session_id 变成陈旧 id，每一轮都会失败，
-    连续 5 次会自我暂停 30 分钟（保护机制）。
+    连续 5 次会自我暂停 30 分钟（2026-10-17 17:44 那次事故）。
     """
     sid = state.get("session_id")
     result = await bridge.decide(
@@ -592,7 +592,7 @@ def set_bot(bot: Any) -> None:
 def _current_bot() -> Any:
     """取发送用的 bot：**优先按配置 bot_qq 精确匹配**，避免多连接时发错通道。
 
-    （为避免误用其他适配器，这里固定为配置账号。）
+    （联调事故教训：取"最近一次事件的 bot"会让测试回复发进真群，这里固定为配置账号。）
     """
     bot = sender.pick_bot(_config.bot_qq or None)
     if bot is not None:
@@ -744,6 +744,11 @@ async def build_prompt(
         "【本群自上次你看过之后的新消息】",
         _trim_transcript([item["text"] for item in items], cfg.max_batch_chars),
     ]
+    if any("戳了戳" in str(item.get("text") or "") for item in items):
+        parts += [
+            "",
+            "【戳一戳说明】只有写着「戳了戳你」的才是戳你；写着「戳了戳别人（不是戳你）」的是群友互戳，不要当成自己。",
+        ]
 
     if cfg.cross_group_digest and cfg.cross_group_messages > 0:
         digest = await bus.digest_other_scopes(
@@ -759,7 +764,7 @@ async def build_prompt(
     # 媒体清单：告诉她这批里有什么、想看的图路径已经备好（看不看由她定）
     if media_rows:
         media_lines: list[str] = []
-        for row in media_rows[:8]:
+        for row in media_rows[:SETTINGS.media_prompt_limit]:
             kind = str(row.get("kind") or "")
             path = str(row.get("fetched_path") or "")
             if kind in ("image", "mface") and path:
@@ -800,11 +805,13 @@ async def build_prompt(
 # ── 决策主流程 ────────────────────────────────────────────────────────────────
 
 
-async def _prefetch_media(rows: list[dict[str, Any]], limit: int = 4) -> list[dict[str, Any]]:
+async def _prefetch_media(rows: list[dict[str, Any]], limit: int | None = None) -> list[dict[str, Any]]:
     """把这批里的图片取回人格容器（她 read_image 的物理前提）。
 
     只预取图片/动画表情（视频太大且不能当图看）；每批最多 limit 张，失败忽略。
+    默认上限由 FISHTANK_MEDIA_PREFETCH_LIMIT 控制。
     """
+    limit = int(limit or SETTINGS.media_prefetch_limit)
     done = 0
     for row in rows:
         if done >= limit:
@@ -845,7 +852,7 @@ async def _maybe_sticker(scope: str, session_id: str | None, last_reply: list[st
     """按冷却决定是否给她配图机会（"按需调用 + 审阅后发送"由 sticker 模块实现）"""
     cfg = _config
     if not scope.startswith("group:"):
-        return  # 私聊先不发表情包（谨慎阶段）
+        return  # 私聊先不发表情包（灰度第①级不掺）
     # 冷却 0 = 不限（她要配几次图由她自己决定）
     if cfg.sticker_cooldown_seconds > 0:
         key = f"sticker_cd:{scope}"
@@ -1112,7 +1119,7 @@ def _reason_of(trigger: Trigger, body: str) -> str:
 
 
 # ── 被引用消息 / @ 显示名 缓存（2026-10-20 深夜）───────────────────────────────
-# 被引用消息需要展示具体回复内容。reply 段只有 message_id，
+# 用户反馈：Persona看不到"具体回复了哪条消息"。reply 段只有 message_id，
 # 需要调 get_msg 取回原消息（昵称/正文/媒体），再渲染成 ↳[回复 谁：……]。
 _QUOTE_TTL = 900          # 被引用消息缓存 15 分钟
 _AT_TTL = 3600            # @ 显示名缓存 1 小时
@@ -1479,7 +1486,7 @@ async def ingest_notice(event: Any, bot: Any) -> None:
             who = "主人" if owner_qq and uid == owner_qq else str(nickmap.get(uid) or nickname or "").strip()
             name_part = f"[{who}]" if who else "[]"
             card_part = f"[{card}]" if card else ""
-            text = f"{name_part}{card_part}: 戳了戳{'你' if is_me else '别人'}"
+            text = f"{name_part}{card_part}: 戳了戳{'你' if is_me else '别人（不是戳你）'}"
             await bus.record(scope, kind="poke", text=text, user_id=str(getattr(event, "user_id", "")), raw=raw)
 
             if not is_me or not served(scope):
