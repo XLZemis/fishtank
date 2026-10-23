@@ -30,7 +30,7 @@ from nonebot import logger
 from .settings import SETTINGS
 
 MIMO_BASE = SETTINGS.mimo_base
-MIMO_MODEL = os.environ.get("FISHTANK_ASR_MODEL", os.environ.get("PERSONA_ASR_MODEL", "mimo-v2.5-asr"))
+MIMO_MODEL = SETTINGS.mimo_model_asr
 MAX_BYTES = 8 * 1024 * 1024  # 8MB 以上的语音不转写（够长的一句话约 100KB）
 _lock = asyncio.Lock()
 _last_call = 0.0

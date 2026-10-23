@@ -21,18 +21,19 @@ from typing import Any
 from nonebot import logger
 
 from . import sender
+from .settings import SETTINGS
 
-MAX_TIMES = 20
-MAX_SPAN_SECONDS = 3600
-MAX_ACTIVE_JOBS = 20
-MIN_INTERVAL_IF_REPEAT = 3
+MAX_TIMES = SETTINGS.interact_max_times
+MAX_SPAN_SECONDS = SETTINGS.interact_max_span_seconds
+MAX_ACTIVE_JOBS = SETTINGS.interact_max_active_jobs
+MIN_INTERVAL_IF_REPEAT = SETTINGS.interact_min_interval_seconds
 
 # job_id → 简要状态（只保留最近 100 条；不落库）
 _JOBS: dict[str, dict[str, Any]] = {}
 _TASKS: dict[str, asyncio.Task] = {}
 # NapCat/QQ 对短时间连戳/连赞会静默丢弃；这里串行化并强制最小间隔。
 _ACTION_LOCK = asyncio.Lock()
-_MIN_ACTION_GAP_SECONDS = 3.0
+_MIN_ACTION_GAP_SECONDS = SETTINGS.interact_min_gap_seconds
 _last_action_at = 0.0
 
 

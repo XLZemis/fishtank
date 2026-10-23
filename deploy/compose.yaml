@@ -1,0 +1,84 @@
+# 通道 P：人格 DSH（profile `qq-persona`）—— 独立容器，与通道 N（/data/dsh-napcat）完全隔离
+# 依据：<HOME>/dsha-install/<internal-deployment-doc>.md §4 P1
+#
+# 隔离原则（回退 = 删本目录）：
+#   · 只在 /data/persona 下新增文件，不碰 /data/dsh-napcat、/data/qqbot 现有文件
+#   · DSH 运行时（@deepseek-ai/dsh@0.2.0-rc.2）装在持久卷 /data/dsh-install，由 lock 钉死
+#   · 不安装 dsh-onebot、不安装 cross-session（见部署文档 §1「明确不做」）
+name: dsh-persona
+
+services:
+  persona:
+    # 生产实际构建：/data/persona/Dockerfile（见 docs/deployment.md）
+    image: node:22-bookworm-slim
+    container_name: dsh-persona
+    restart: unless-stopped
+    # 固定 cwd。文档 P2 写的是 /data/persona/work，这里**上提到 /persona**，原因：
+    #   · DSH 的文件沙箱以「会话 cwd」为可写根（sandbox-policy.workspaceRoot 只是无会话时的兜底），
+    #     cwd=/persona/work 时她连 /persona/triggers.yaml 都写不了，
+    #     而红线 4 要求「触发器归她自己维护」；
+    #   · 上提一级后她可写范围 = /persona（触发器/记忆/人格/work），仍然够不到
+    #     /data/qqbot 生产栈与系统目录，比放开整机权限安全得多；
+    #   · /persona 下**没有** AGENTS.md（如果有人加了会每次重读系统提示，务必保持干净）。
+    working_dir: /persona
+    environment:
+      - HOME=/root
+      # 容器内 /data = 主机 /data/persona/data（DSH_HOME）
+      - DSH_HOME=/data
+      # T5（北京时间 cron）依赖时区
+      - TZ=Asia/Shanghai
+      # 人格与记忆锚点文件路径（profile 的 !!js 表达式按需读取）
+      - PERSONA_PROMPT_FILE=/persona/prompts/persona-v2.0-draft.md
+      - PERSONA_MEMORY_FILE=/persona/memory/persona-memory.md
+      # 决策桥（P4a）：监听端口 + Bearer token 文件
+      - PERSONA_BRIDGE_PORT=13101
+      - FISHTANK_BRIDGE_PORT=${FISHTANK_BRIDGE_PORT:-13101}
+      - FISHTANK_BRIDGE_BIND=${FISHTANK_BRIDGE_BIND:-0.0.0.0}
+      - FISHTANK_BRIDGE_CONCURRENCY=${FISHTANK_BRIDGE_CONCURRENCY:-2}
+      - FISHTANK_BRIDGE_TIMEOUT_MS=${FISHTANK_BRIDGE_TIMEOUT_MS:-45000}
+      - FISHTANK_MAX_MESSAGES=${FISHTANK_MAX_MESSAGES:-20}
+      - FISHTANK_MAX_MESSAGE_CHARS=${FISHTANK_MAX_MESSAGE_CHARS:-200}
+      - FISHTANK_BRIDGE_MAX_BODY_BYTES=${FISHTANK_BRIDGE_MAX_BODY_BYTES:-262144}
+      - FISHTANK_MEDIA_MAX_BYTES=${FISHTANK_MEDIA_MAX_BYTES:-31457280}
+      # 0.2.1 起 llm-deepseek 允许从启动环境读 key（credentials 服务也支持）
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - PERSONA_BRIDGE_TOKEN_FILE=/persona/bridge-token
+      - PERSONA_OWNER_QQ=${PERSONA_OWNER_QQ:-}
+      - FISHTANK_SMTP_HOST=${FISHTANK_SMTP_HOST:-}
+      - FISHTANK_SMTP_PORT=${FISHTANK_SMTP_PORT:-465}
+      - FISHTANK_SMTP_SECURITY=${FISHTANK_SMTP_SECURITY:-ssl}
+      - FISHTANK_SMTP_USER=${FISHTANK_SMTP_USER:-}
+      - FISHTANK_SMTP_PASSWORD=${FISHTANK_SMTP_PASSWORD:-}
+      - FISHTANK_SMTP_FROM=${FISHTANK_SMTP_FROM:-}
+      - PERSONA_BRIDGE_WORKDIR=/persona
+      - PERSONA_BRIDGE_LOG=/data/bridge.log
+      # 她的触发器配置（所有权归她；感知层每 60s 通过桥的 GET /triggers.yaml 取一次）
+      - PERSONA_TRIGGERS_FILE=/persona/triggers.yaml
+    volumes:
+      - ./data:/data
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      # 整个 /data/persona 挂到 /persona（目录挂载，不是单文件挂载）：
+      #   · 她能自己改 triggers.yaml / memory/persona-memory.md / prompts（她有 write 工具）
+      #   · 目录挂载才能扛住主机侧的"原子写"（temp+rename），单文件挂载会一直指向旧 inode
+      - ./:/persona
+      # 与 NapCat 共享的中转目录（她写到这里，NapCat 从同路径读到就能发文件）
+      #   NapCat 侧挂载：/data/qqbot/exports → /data/qqbot/exports:ro
+      - /data/qqbot/exports:/persona/out
+      # 生产表情包库（只读）：她审阅候选时用 read_image 能看图；写权限一点没有
+      - /data/qqbot/stickers:/data/prod-stickers:ro
+      # 与 NoneBot 感知层共享的鉴权 token（复用 qqbot 已挂载的 config 目录）
+      - /data/qqbot/config/persona-bridge.token:/persona/bridge-token:ro
+    entrypoint: ["/entrypoint.sh"]
+    ports:
+      # 仅回环：真机/运维调试走 SSH 隧道；NoneBot 走容器网络
+      - "127.0.0.1:13101:13101"
+    # 主机只有 3.9G 内存且跑着生产 QQ 栈：给人格容器设上限，宁可 OOM 它自己也不拖垮生产
+    mem_limit: 1500m
+    networks:
+      - qqbot
+    logging: { options: { max-size: "10m", max-file: "3" } }
+
+networks:
+  qqbot:
+    external: true
+    name: qqbot_qqbot

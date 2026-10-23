@@ -37,12 +37,12 @@ KEY_FILE = str(SETTINGS.mimo_key_file)
 MAX_BYTES = 24 * 1024 * 1024  # 24MB 以内才直接发
 
 _MODELS = {
-    "asr": "mimo-v2.5-asr",
-    "flash": "mimo-v2.6-flash",
-    "pro": "mimo-v2.6-pro",
-    "vision": "mimo-v2.6-flash",
-    "video": "mimo-v2.6-flash",
-    "audio": "mimo-v2.6-flash",
+    "asr": SETTINGS.mimo_model_asr,
+    "flash": SETTINGS.mimo_model_flash,
+    "pro": SETTINGS.mimo_model_pro,
+    "vision": SETTINGS.mimo_model_flash,
+    "video": SETTINGS.mimo_model_flash,
+    "audio": SETTINGS.mimo_model_flash,
 }
 _EXT_KIND = {
     "jpg": "image", "jpeg": "image", "png": "image", "gif": "image", "webp": "image", "bmp": "image",

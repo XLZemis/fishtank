@@ -52,7 +52,7 @@ EVENT_TYPES = {"mention", "poke", "keyword", "regex", "sender", "msgtype"}
 TIMER_TYPES = {"interval", "cron"}
 
 # 配置刷新间隔：部署文档要求"每 60s 重读"
-REFRESH_SECONDS = 60
+REFRESH_SECONDS = SETTINGS.trigger_refresh_seconds
 
 # 叫醒原因优先级：合并时保留最高的那个（@ > 戳 > 内容命中 > 定时 > 自决）
 PRIORITY = {
@@ -1549,8 +1549,8 @@ async def _known_group_scopes() -> list[str]:
 
 
 # ── 群友档案：平台自动维护"谁是谁"（不需要手机；6 小时一次）─────────────────
-ROSTER_INTERVAL_S = 6 * 3600
-ROSTER_MEMBERS_PER_GROUP = 12
+ROSTER_INTERVAL_S = SETTINGS.roster_interval_seconds
+ROSTER_MEMBERS_PER_GROUP = SETTINGS.roster_members_per_group
 
 
 async def _build_roster() -> str:

@@ -27,7 +27,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ── 配置（全部来自容器环境变量，compose.yaml 里声明） ──────────────────────────
-const PORT = Number(process.env.PERSONA_BRIDGE_PORT || 13101);
+function envFirst(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && String(value).trim() !== '') return String(value).trim();
+  }
+  return '';
+}
+const PORT = Number(envFirst('FISHTANK_BRIDGE_PORT', 'PERSONA_BRIDGE_PORT') || 13101);
+// 容器内绑 0.0.0.0 由网络隔离 + Bearer token 保护；裸机部署请设 127.0.0.1
+const BIND = envFirst('FISHTANK_BRIDGE_BIND', 'PERSONA_BRIDGE_BIND') || '0.0.0.0';
 const WORKDIR = process.env.PERSONA_BRIDGE_WORKDIR || '/persona/work';
 const SESSIONS_ROOT = process.env.PERSONA_SESSIONS_ROOT || '/data/sessions';
 const TOKEN_FILE = process.env.PERSONA_BRIDGE_TOKEN_FILE || '/persona/bridge-token';
@@ -42,13 +51,15 @@ const STICKER_MANIFEST = path.join(STICKER_ROOT, 'manifest.json');
 const MEDIA_DIR = process.env.PERSONA_MEDIA_DIR || '/persona/media';
 const PROFILE = process.env.PERSONA_PROFILE || 'qq-persona';
 // 并发上限：主机只有 3.9G 内存，每个 dsh 进程约 200-300MB；2 是实测安全值
-const CONCURRENCY = Number(process.env.PERSONA_BRIDGE_CONCURRENCY || 2);
+const CONCURRENCY = Number(envFirst('FISHTANK_BRIDGE_CONCURRENCY', 'PERSONA_BRIDGE_CONCURRENCY') || 2);
 // 单次决策硬超时（毫秒）：超过就杀进程返回 timeout，避免队列被永久占住
-const DEFAULT_TIMEOUT_MS = Number(process.env.PERSONA_BRIDGE_TIMEOUT_MS || 45000);
+const DEFAULT_TIMEOUT_MS = Number(envFirst('FISHTANK_BRIDGE_TIMEOUT_MS', 'PERSONA_BRIDGE_TIMEOUT_MS') || 45000);
 // 一轮最多几条：**由她自己决定**（用户口径：不限速）；这里只是防病态输出的技术硬顶
-const MAX_MESSAGES = Number(process.env.PERSONA_MAX_MESSAGES || 20);
+const MAX_MESSAGES = Number(envFirst('FISHTANK_MAX_MESSAGES', 'PERSONA_MAX_MESSAGES') || 20);
 // 单条消息最大字数（QQ 单条上限附近取保守值）
-const MAX_MESSAGE_CHARS = 200;
+const MAX_MESSAGE_CHARS = Number(envFirst('FISHTANK_MAX_MESSAGE_CHARS', 'PERSONA_MAX_MESSAGE_CHARS') || 200);
+const MAX_BODY_BYTES = Number(envFirst('FISHTANK_BRIDGE_MAX_BODY_BYTES') || 256 * 1024);
+const MEDIA_MAX_BYTES = Number(envFirst('FISHTANK_MEDIA_MAX_BYTES') || 30 * 1024 * 1024);
 
 // ── 小工具 ────────────────────────────────────────────────────────────────────
 /** 追加一行带时间戳的日志（写到持久卷，方便事后排查） */
@@ -721,7 +732,7 @@ const server = http.createServer(async (req, res) => {
         if (!resp.ok) return sendJson(res, 502, { ok: false, error: `upstream ${resp.status}` });
         const buf = Buffer.from(await resp.arrayBuffer());
         if (buf.length === 0) return sendJson(res, 502, { ok: false, error: 'empty body' });
-        if (buf.length > 30 * 1024 * 1024) return sendJson(res, 413, { ok: false, error: 'too large' });
+        if (buf.length > MEDIA_MAX_BYTES) return sendJson(res, 413, { ok: false, error: 'too large' });
         fs.writeFileSync(target, buf);
         log(`[media] 取回 ${id} ${buf.length}B -> ${target}`);
         return sendJson(res, 200, {
@@ -749,7 +760,7 @@ const server = http.createServer(async (req, res) => {
   let size = 0;
   req.on('data', (chunk) => {
     size += chunk.length;
-    if (size > 256 * 1024) {
+    if (size > MAX_BODY_BYTES) {
       req.destroy();
       return;
     }
@@ -784,8 +795,8 @@ try {
   process.exit(1);
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-  log(`[boot] dsh-persona bridge 监听 :${PORT} profile=${PROFILE} cwd=${WORKDIR} 并发=${CONCURRENCY}`);
+server.listen(PORT, BIND, () => {
+  log(`[boot] dsh-persona bridge 监听 ${BIND}:${PORT} profile=${PROFILE} cwd=${WORKDIR} 并发=${CONCURRENCY}`);
   log(`[boot] token 已加载（长度 ${TOKEN.length}），会话根 ${SESSIONS_ROOT}`);
   log(`[boot] 触发器配置 ${TRIGGERS_FILE}（存在=${fs.existsSync(TRIGGERS_FILE)}）`);
   log(`[boot] 专属表情包库 ${STICKER_MANIFEST}（存在=${fs.existsSync(STICKER_MANIFEST)}）`);

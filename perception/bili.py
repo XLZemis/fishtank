@@ -14,7 +14,7 @@ r"""B 站链接解析（感知层）——把群里的 B 站分享变成她看�
 
 在 prompt 里的形态：
     【这批里的 B 站链接】
-      · 「示例视频标题」— UP 示例作者 · 20:48 · 8.3 万播放 · 1077 评论
+      · 「大Persona成精了：它按自己作息刷B站」— UP 花离渐至见条鱼 · 20:48 · 8.3 万播放 · 1077 评论
         简介：我给 DSH 养了一条会自己刷 B 站的鱼…
 
 不阻塞主流程：两条路都取不到就整段不出现（卡片标题仍然会保留在消息文本里）。
@@ -31,15 +31,17 @@ from typing import Any
 import httpx
 from nonebot import logger
 
-PROXY = os.environ.get("PERSONA_BILI_PROXY", "http://172.18.0.1:13120")  # docker 网关 → 宿主 relay → SSH 隧道 → PC
-CACHE_TTL = 1800
+from .settings import SETTINGS
+
+PROXY = SETTINGS.bili_proxy  # docker 网关 → 宿主 relay → SSH 隧道 → PC
+CACHE_TTL = int(os.getenv("FISHTANK_BILI_CACHE_TTL_S", "1800"))
 # 浏览器兜底很慢（打开视频页 ~10-20s）。决策流程在前面等这一段，必须设上限，
 # 否则一批 4 个链接会把她的回复拖到 1 分钟后。见 brief() 的总预算：
 #   · 单个链接兜底最多 20s（BROWSER_TIMEOUT）；
 #   · brief 总预算 20s：视频走代理时 <1s/个；专栏/动态/主页走浏览器约 3-5s/个，
 #     4 个链接通常 12-18s；某个慢请求最多 20s，后面的链接直接跳过。
-BROWSER_TIMEOUT = 20.0
-BRIEF_BUDGET = 20.0
+BROWSER_TIMEOUT = float(os.getenv("FISHTANK_BILI_BROWSER_TIMEOUT_S", "20"))
+BRIEF_BUDGET = float(os.getenv("FISHTANK_BILI_BRIEF_BUDGET_S", "20"))
 _cache: dict[str, tuple[float, dict]] = {}
 _health_at = 0.0
 _health_ok = False

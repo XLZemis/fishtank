@@ -52,6 +52,18 @@ class Settings:
     bot_qq: str
     owner_qq: str
     debug_routes: bool
+    bili_proxy: str
+    mimo_model_asr: str
+    mimo_model_flash: str
+    mimo_model_pro: str
+    interact_max_times: int
+    interact_max_span_seconds: int
+    interact_max_active_jobs: int
+    interact_min_interval_seconds: int
+    interact_min_gap_seconds: float
+    trigger_refresh_seconds: int
+    roster_interval_seconds: int
+    roster_members_per_group: int
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -83,6 +95,33 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     bot_qq = _first(e, "FISHTANK_BOT_QQ", "BOT_QQ")
     owner_qq = _first(e, "FISHTANK_OWNER_QQ", "PERSONA_OWNER_QQ")
     debug_routes = _first(e, "FISHTANK_DEBUG_ROUTES", default="0").lower() in {"1", "true", "yes", "on"}
+    bili_proxy = _first(e, "FISHTANK_BILI_PROXY", "PERSONA_BILI_PROXY", default="http://172.18.0.1:13120")
+    mimo_model_asr = _first(e, "FISHTANK_MIMO_MODEL_ASR", default="mimo-v2.5-asr")
+    mimo_model_flash = _first(e, "FISHTANK_MIMO_MODEL_FLASH", default="mimo-v2.6-flash")
+    mimo_model_pro = _first(e, "FISHTANK_MIMO_MODEL_PRO", default="mimo-v2.6-pro")
+
+    def _int(names: tuple[str, ...], default: int) -> int:
+        raw = _first(e, *names, default=str(default))
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+
+    def _float(names: tuple[str, ...], default: float) -> float:
+        raw = _first(e, *names, default=str(default))
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    interact_max_times = _int(("FISHTANK_INTERACT_MAX_TIMES",), 20)
+    interact_max_span = _int(("FISHTANK_INTERACT_MAX_SPAN_S",), 3600)
+    interact_max_jobs = _int(("FISHTANK_INTERACT_MAX_JOBS",), 20)
+    interact_min_interval = _int(("FISHTANK_INTERACT_MIN_INTERVAL_S",), 3)
+    interact_min_gap = _float(("FISHTANK_INTERACT_MIN_GAP_S",), 3.0)
+    trigger_refresh = _int(("FISHTANK_TRIGGER_REFRESH_S",), 60)
+    roster_interval = _int(("FISHTANK_ROSTER_INTERVAL_S",), 6 * 3600)
+    roster_members = _int(("FISHTANK_ROSTER_MEMBERS_PER_GROUP",), 12)
     return Settings(
         data_root=data_root,
         persona_root=persona_root,
@@ -106,6 +145,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         bot_qq=bot_qq,
         owner_qq=owner_qq,
         debug_routes=debug_routes,
+        bili_proxy=bili_proxy,
+        mimo_model_asr=mimo_model_asr,
+        mimo_model_flash=mimo_model_flash,
+        mimo_model_pro=mimo_model_pro,
+        interact_max_times=interact_max_times,
+        interact_max_span_seconds=interact_max_span,
+        interact_max_active_jobs=interact_max_jobs,
+        interact_min_interval_seconds=interact_min_interval,
+        interact_min_gap_seconds=interact_min_gap,
+        trigger_refresh_seconds=trigger_refresh,
+        roster_interval_seconds=roster_interval,
+        roster_members_per_group=roster_members,
     )
 
 

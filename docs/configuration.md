@@ -40,6 +40,21 @@
 
 > `PERCEPTION_ARMED`、触发器表、群/关键词/cron/间隔仍留在 `triggers.yaml`，不迁 env。
 
+## P2b 可调参数（可选，不设走默认）
+
+| 变量 | 默认 |
+|---|---|
+| `FISHTANK_BRIDGE_PORT` / `BIND` | `13101` / `0.0.0.0` |
+| `FISHTANK_BRIDGE_CONCURRENCY` | `2` |
+| `FISHTANK_BRIDGE_TIMEOUT_MS` | `45000` |
+| `FISHTANK_MAX_MESSAGES` / `MAX_MESSAGE_CHARS` | `20` / `200` |
+| `FISHTANK_BRIDGE_MAX_BODY_BYTES` / `MEDIA_MAX_BYTES` | `262144` / `30MB` |
+| `FISHTANK_BILI_PROXY` | `http://172.18.0.1:13120`（旧 `PERSONA_BILI_PROXY`） |
+| `FISHTANK_BILI_CACHE_TTL_S` / `BROWSER_TIMEOUT_S` / `BRIEF_BUDGET_S` | `1800` / `20` / `20` |
+| `FISHTANK_INTERACT_*` | 20 次 / 3600s / 20 job / 3s / 3s |
+| `FISHTANK_TRIGGER_REFRESH_S` / `ROSTER_INTERVAL_S` / `ROSTER_MEMBERS_PER_GROUP` | `60` / `21600` / `12` |
+| `FISHTANK_MIMO_MODEL_ASR/FLASH/PRO` | `mimo-v2.5-asr` / `mimo-v2.6-flash` / `mimo-v2.6-pro` |
+
 ## 安全约束
 
 - QR 图接口（`/qzone/login/qr.png`、`/browser/login/qr.png`）token 缺失时 **401**，不再 fail-open。
