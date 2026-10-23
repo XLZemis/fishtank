@@ -453,6 +453,28 @@ def _register_qzone_routes() -> None:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
         return Response(content=png, media_type="image/png")
 
+    @app.post("/browser/shot")
+    async def browser_shot(request: Request):
+        """通用网页截图（browser_shot 工具用）：保存到 exports，返回 /persona/out 路径。"""
+        from fastapi.responses import JSONResponse
+
+        from . import browser as browser_mod
+
+        if not _ok(request):
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        result = await browser_mod.screenshot(
+            str(body.get("url") or ""),
+            full_page=bool(body.get("full_page") or False),
+            width=int(body.get("width") or 1280),
+            height=int(body.get("height") or 900),
+            wait_ms=int(body.get("wait_ms") or 2500),
+        )
+        return JSONResponse(result)
+
     @app.post("/browser/open")
     async def browser_open(request: Request):
         """通用"打开网页读正文"（服务器上的 headless Chromium）。"""
@@ -572,6 +594,32 @@ def _register_qzone_routes() -> None:
             return JSONResponse({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status_code=500)
         return JSONResponse({"ok": bool(result.get("ok")), "action": action,
                              "data": result, "text": _bili_action_text(action, result)})
+
+    @app.post("/onebot/query")
+    async def onebot_query(request: Request):
+        """只读 OneBot/NapCat 查询投射（napcat_query 工具用；白名单 API）。"""
+        from fastapi.responses import JSONResponse
+
+        if not _ok(request):
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        api = str(body.get("api") or "")
+        if api not in _DEBUG_APIS:
+            return JSONResponse({"ok": False, "error": f"api 不在只读白名单：{api}"}, status_code=400)
+        params = body.get("params") or {}
+        if not isinstance(params, dict):
+            return JSONResponse({"ok": False, "error": "params 必须是对象"}, status_code=400)
+        bot = sender.pick_bot(triggers.config().bot_qq)
+        if bot is None:
+            return JSONResponse({"ok": False, "error": "没有在线 bot"}, status_code=503)
+        try:
+            data = await bot.call_api(api, **params)
+            return JSONResponse({"ok": True, "api": api, "data": data})
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
     @app.post("/debug/onebot")
     async def debug_onebot(request: Request):

@@ -1,0 +1,1 @@
+{"name":"@persona/napcat-tools","version":"0.1.0","description":"Read-only OneBot/NapCat query projection","type":"module","main":"lib/index.js","peerDependencies":{"@deepseek-ai/dsh-tools":"*"}}

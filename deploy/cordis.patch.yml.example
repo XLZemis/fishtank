@@ -28,6 +28,12 @@
       name: '/data/dsh-install/node_modules/@persona/interact-tools/lib/index.js'
     - id: persona-sticker-tools
       name: '/data/dsh-install/node_modules/@persona/sticker-tools/lib/index.js'
+    - id: persona-browser-tools
+      name: '/data/dsh-install/node_modules/@persona/browser-tools/lib/index.js'
+    - id: persona-napcat-tools
+      name: '/data/dsh-install/node_modules/@persona/napcat-tools/lib/index.js'
+    - id: persona-mail-tools
+      name: '/data/dsh-install/node_modules/@persona/mail-tools/lib/index.js'
 
 # ── 人格 + 记忆锚点 ────────────────────────────────────────────────────────
 - id: system-prompt

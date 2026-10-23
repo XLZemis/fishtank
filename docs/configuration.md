@@ -52,3 +52,29 @@
 - `perception/rules.toml` 已删除（配置早已迁到 `triggers.yaml`）。
 - `.env.example` 只放占位符，不放真实 QQ。
 - `tests/` 使用合成身份，不回落真实值。
+
+## 人格侧邮件（mail_send）
+
+`mail_send` 在 persona 容器里调用 `/persona/tools/mail_send.py`，只读这些环境变量（只注入 persona，不需要进感知层）：
+
+| 变量 | 说明 |
+|---|---|
+| `FISHTANK_SMTP_HOST` | SMTP 服务器（必填） |
+| `FISHTANK_SMTP_PORT` | 端口，默认 465 |
+| `FISHTANK_SMTP_SECURITY` | `ssl` / `starttls` / `plain`；默认按端口（465→ssl，其余→starttls） |
+| `FISHTANK_SMTP_USER` | 登录用户 |
+| `FISHTANK_SMTP_PASSWORD` / `FISHTANK_SMTP_PASSWORD_FILE` | 授权码/密码，优先 env；文件更安全 |
+| `FISHTANK_SMTP_FROM` | 发件地址，默认同 USER |
+| `FISHTANK_SMTP_TIMEOUT` | 超时秒数，默认 45 |
+
+示例（QQ 邮箱/企业邮箱一般用 `ssl` + 465 + 授权码）：
+
+```bash
+# /data/persona/.env（600），然后重启 persona
+FISHTANK_SMTP_HOST=smtp.qq.com
+FISHTANK_SMTP_PORT=465
+FISHTANK_SMTP_SECURITY=ssl
+FISHTANK_SMTP_USER=xxx@qq.com
+FISHTANK_SMTP_PASSWORD=<授权码>
+FISHTANK_SMTP_FROM=xxx@qq.com
+```

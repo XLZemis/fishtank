@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import asyncio
 import datetime as _dt
+import hashlib
 import json
 import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +89,65 @@ async def _connect():
     browser = await _pw.chromium.connect_over_cdp(CDP_URL)
     ctx = browser.contexts[0] if browser.contexts else await browser.new_context()
     return _pw, browser, ctx
+
+
+async def screenshot(
+    url: str,
+    *,
+    full_page: bool = False,
+    width: int = 1280,
+    height: int = 900,
+    wait_ms: int = 2500,
+) -> dict[str, Any]:
+    """用常驻 Chromium 打开网页并截图，写到 exports 供她发邮件/发文件。
+
+    返回 {ok, path, view_path, url, bytes, full_page}；失败返回 {ok: False, error}。
+    """
+    if not re.match(r"^https?://", str(url or ""), re.I):
+        return {"ok": False, "error": "url 必须是 http(s)"}
+    width = max(320, min(int(width or 1280), 3840))
+    height = max(240, min(int(height or 900), 2160))
+    wait_ms = max(0, min(int(wait_ms or 2500), 15000))
+    page = None
+    try:
+        pw, browser, ctx = await _connect()
+        page = await ctx.new_page()
+        try:
+            await page.set_viewport_size({"width": width, "height": height})
+            await page.bring_to_front()
+        except Exception:  # noqa: BLE001
+            pass
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(wait_ms)
+        png = await page.screenshot(full_page=bool(full_page), timeout=30000)
+        if not png:
+            return {"ok": False, "error": "截图内容为空"}
+        digest = hashlib.sha1(f"{url}|{full_page}|{time.time()}".encode("utf-8", "ignore")).hexdigest()[:12]
+        name = f"shot_{digest}.png"
+        out = SETTINGS.exports_dir / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(png)
+        try:
+            out.chmod(0o644)
+        except OSError:
+            pass
+        return {
+            "ok": True,
+            "path": str(out),
+            "view_path": f"{SETTINGS.persona_out_prefix}/{name}",
+            "url": url,
+            "bytes": len(png),
+            "full_page": bool(full_page),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[perception] 网页截图失败 {url}: {exc}")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        if page is not None:
+            try:
+                await page.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def _frames_text(page) -> str:

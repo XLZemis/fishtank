@@ -1,0 +1,1 @@
+{"name":"@persona/mail-tools","version":"0.1.0","description":"SMTP mail with attachments","type":"module","main":"lib/index.js","peerDependencies":{"@deepseek-ai/dsh-tools":"*"}}

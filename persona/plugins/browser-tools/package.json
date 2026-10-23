@@ -1,0 +1,1 @@
+{"name":"@persona/browser-tools","version":"0.1.0","description":"Screenshot web pages via the shared Chromium","type":"module","main":"lib/index.js","peerDependencies":{"@deepseek-ai/dsh-tools":"*"}}
