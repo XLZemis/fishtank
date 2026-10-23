@@ -27,7 +27,7 @@ QQ 群/私聊
    ├─ 提示词 + 记忆（她自己写的）
    ├─ 触发器表（她自己维护）
    └─ 工具：trigger_* / chat_search / chat_detail / perception_stats /
-            nickname_* / media_look / doc_read / interact / sticker_save / browser_shot / napcat_query / mail_send / web_open / qzone_* 
+            nickname_* / media_look / doc_read / interact / sticker_save / browser_shot / napcat_query / mail_send / web_open / qzone_*
    │
    ▼
 发送器 sender（合并消息、图片、语音、文件、@、引用回复、表情包）
