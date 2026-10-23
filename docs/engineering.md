@@ -44,12 +44,20 @@ DEPLOY_HOST=myhost ./scripts/test.sh
 - **大模块**：`triggers.py` / `browser.py` 仍然偏大；只在有测试保护后再拆。
 - **集成测试**：浏览器、QZone、B站、媒体理解依赖真实登录/外部服务，暂不做自动 CI。
 
+## 3.5 P2 进展（2026-10-23）
+
+- 新增 `perception/settings.py`（`FISHTANK_*` + 旧别名兼容）；
+- 已迁移 bus/media_ai/sticker/browser/login 的路径与端点；
+- QR 接口 token 缺失改为 401（修 fail-open）；debug 路由默认关闭；
+- owner/bot 不再用真实 QQ 默认值，部署侧注入；tests 改合成身份；
+- `rules.toml` 删除；详见 `docs/configuration.md`。
+
 ## 4. 建议顺序
 
 | 阶段 | 内容 | 目的 |
 |---|---|---|
 | P1（已完成） | 24 个单测 + `scripts/test.sh` | 先有回归网 |
-| P2 | 配置抽离（env/config）+ 公开导出 allowlist + secret scan | 能安全开源、能多环境部署 |
+| P2（进行中） | 配置抽离（env/config）+ 安全 fail-closed | 能安全开源、能多环境部署 |
 | P3 | GitHub Actions + LICENSE + mock adapter + 架构文档 | 公开仓库可维护 |
 | P4 | 按模块拆 `triggers`/`browser`，补集成 smoke | 降低长期复杂度 |
 

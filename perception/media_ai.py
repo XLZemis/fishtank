@@ -30,8 +30,10 @@ from typing import Any
 import httpx
 from nonebot import logger
 
-MIMO_BASE = "https://api.xiaomimimo.com/v1"
-KEY_FILE = "/data/qqbot/config/mimo.key"
+from .settings import SETTINGS
+
+MIMO_BASE = SETTINGS.mimo_base
+KEY_FILE = str(SETTINGS.mimo_key_file)
 MAX_BYTES = 24 * 1024 * 1024  # 24MB 以内才直接发
 
 _MODELS = {

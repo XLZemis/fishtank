@@ -11,7 +11,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 
 const BOT = process.env.PERSONA_PERCEPTION_BASE || 'http://qqbot-nonebot:8080';
 const TOKEN_FILE = process.env.PERSONA_BRIDGE_TOKEN_FILE || '/persona/bridge-token';
-const OWNER_QQ = process.env.PERSONA_OWNER_QQ || '1000000002';
+const OWNER_QQ = process.env.PERSONA_OWNER_QQ || '';
 const OUT_DIR = process.env.PERSONA_OUT_DIR || '/persona/out';
 
 export const name = 'persona-interact-tools';

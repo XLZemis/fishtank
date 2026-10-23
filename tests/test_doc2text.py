@@ -22,9 +22,9 @@ class TestDoc2Text(unittest.TestCase):
     def test_text_and_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "a.csv"
-            path.write_text("姓名,能力\nPersona,文档解析\n", encoding="utf-8")
+            path.write_text("姓名,能力\n示例角色,文档解析\n", encoding="utf-8")
             out = self.module.extract(str(path))
-            self.assertIn("Persona", out)
+            self.assertIn("示例角色", out)
             self.assertIn("文档解析", out)
 
     def test_html(self):

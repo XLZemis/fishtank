@@ -1,7 +1,7 @@
 """感知层 · 表情包（sticker.py）
 
 她要能用两套表情包：
-    ① **她自己的专属库**：`/data/persona/stickers`（414 张 示例角色，聊天尺寸）
+    ① **她自己的专属库**：`/data/persona/stickers`（414 张 示例角色/大Persona，聊天尺寸）
        —— 由决策桥经 HTTP 提供（清单 GET /stickers/manifest、单张 GET /stickers/file?id=…）
     ② **公共生产库**：`/data/qqbot/stickers`（大量，带 usage_tags/attitudes/emotions/anti_tags）
        —— 直接读只读 SQLite（qqbot.sqlite3）与本机文件，零改动
@@ -33,17 +33,18 @@ from typing import Any
 from nonebot import logger
 
 from . import bridge, bus, sender
+from .settings import SETTINGS
 
 # 她的专属库（由桥提供）；公共库在 qqbot 容器里本来就是本机路径
 OWN_MANIFEST_TTL = 300      # 清单 5 分钟缓存
 PUBLIC_CACHE_TTL = 300      # 公共库索引 5 分钟缓存
 MAX_QUERY_CHARS = 24        # 她给的"情绪/用途"最多这么长
-PROD_DB = Path("/data/qqbot/db/qqbot.sqlite3")
-PROD_STICKER_ROOT = Path("/data/qqbot/stickers")
-ONTOLOGY = Path("/data/qqbot/config/sticker-tag-ontology.v1.json")
+PROD_DB = SETTINGS.prod_db
+PROD_STICKER_ROOT = SETTINGS.prod_sticker_root
+ONTOLOGY = SETTINGS.sticker_ontology
 # 她审阅时用的路径前缀（人格容器里看到的路径）
-OWN_VIEW_PREFIX = "/persona/stickers"
-PROD_VIEW_PREFIX = "/data/prod-stickers"
+OWN_VIEW_PREFIX = SETTINGS.own_sticker_view_prefix
+PROD_VIEW_PREFIX = SETTINGS.prod_sticker_view_prefix
 
 
 @dataclass

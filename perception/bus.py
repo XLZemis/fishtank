@@ -25,8 +25,10 @@ from typing import Any
 import aiosqlite
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent, NoticeEvent
 
+from .settings import SETTINGS
+
 # 独立库：与生产库 /data/qqbot/db/qqbot.sqlite3 完全分开（部署文档 P4 硬性要求）
-DB_PATH = Path("/data/qqbot/db/perception.sqlite3")
+DB_PATH = SETTINGS.db_path
 
 # 北京时间：T5（cron）与 prompt 里的时间戳都按这个来，服务器本身也是 Asia/Shanghai
 try:

@@ -66,7 +66,7 @@ sender: 文本 / 图片 / 语音 / 文件 / 表情 / 引用
    - 用测试 QQ 发一条 @ 消息，确认 base flow；
    - 再逐步开启浏览器/媒体/互动工具。
 
-更完整的工程说明见 [`docs/engineering.md`](docs/engineering.md)。
+更完整的工程说明见 [`docs/engineering.md`](docs/engineering.md)；配置变量见 [`docs/configuration.md`](docs/configuration.md)。
 
 ## 测试
 

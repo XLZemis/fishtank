@@ -11,6 +11,8 @@ from typing import Any
 
 from nonebot import logger
 
+from .settings import SETTINGS
+
 # Chrome 会校验 Host 头（只接受 IP/localhost），所以用容器 IP 而不是主机名
 def _cdp_url() -> str:
     import socket
@@ -24,11 +26,11 @@ def _cdp_url() -> str:
     return "http://127.0.0.1:9222"
 
 
-CDP_URL = _cdp_url()
+CDP_URL = SETTINGS.cdp_url or _cdp_url()
 
 _SERVICES: dict[str, dict[str, Any]] = {
     "qzone": {
-        "url": "https://user.qzone.qq.com/1000000001",
+        "url": f"{SETTINGS.qzone_base}/{SETTINGS.bot_qq}",
         "ok": ("的QQ空间", "说点儿什么吧", "今日访客", "好友动态", "写说说"),
     },
     "bilibili": {

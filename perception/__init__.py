@@ -29,6 +29,7 @@ from nonebot.params import CommandArg
 from nonebot.rule import Rule
 
 from . import bridge, bus, sender, sticker, triggers
+from .settings import SETTINGS
 
 require("nonebot_plugin_apscheduler")  # 仅用于声明依赖关系（本插件不用它的调度）
 
@@ -241,15 +242,24 @@ def _register_qzone_routes() -> None:
         logger.warning("[perception] 没有 FastAPI app，跳过 qzone 路由")
         return
 
-    def _ok(req: Request) -> bool:
-        import pathlib as _p
-
+    def _token_value() -> str:
         try:
-            token = _p.Path("/data/qqbot/config/persona-bridge.token").read_text(encoding="utf-8").strip()
+            return SETTINGS.bridge_token_file.read_text(encoding="utf-8").strip()
         except OSError:
+            return ""
+
+    def _ok(req: Request) -> bool:
+        token = _token_value()
+        if not token:
             return False
         auth = req.headers.get("authorization") or ""
         return auth == f"Bearer {token}"
+
+    def _owner_qq() -> int | None:
+        raw = str(SETTINGS.owner_qq or "").strip()
+        if not raw.isdigit():
+            return None
+        return int(raw)
 
     @app.get("/qzone/feed")
     async def qzone_feed(request: Request, num: int = 10):
@@ -365,11 +375,15 @@ def _register_qzone_routes() -> None:
             if bot is not None and png:
                 import base64 as _b64
 
-                await bot.call_api(
-                    "send_private_msg",
-                    user_id=int(os.environ.get("PERSONA_OWNER_QQ", "1000000002")),
-                    message=[{"type": "image", "data": {"file": "base64://" + _b64.b64encode(png).decode()}}],
-                )
+                owner = _owner_qq()
+                if owner is None:
+                    logger.warning("[perception] 未配置 owner QQ，无法私聊发送二维码")
+                else:
+                    await bot.call_api(
+                        "send_private_msg",
+                        user_id=owner,
+                        message=[{"type": "image", "data": {"file": "base64://" + _b64.b64encode(png).decode()}}],
+                    )
                 sent = True
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[perception] 二维码私聊发送失败：{exc}")
@@ -394,11 +408,15 @@ def _register_qzone_routes() -> None:
         try:
             bot = sender.pick_bot(triggers.config().bot_qq)
             if bot is not None and png_b64:
-                await bot.call_api(
-                    "send_private_msg",
-                    user_id=int(os.environ.get("PERSONA_OWNER_QQ", "1000000002")),
-                    message=[{"type": "image", "data": {"file": "base64://" + png_b64}}],
-                )
+                owner = _owner_qq()
+                if owner is None:
+                    logger.warning("[perception] 未配置 owner QQ，无法私聊发送二维码")
+                else:
+                    await bot.call_api(
+                        "send_private_msg",
+                        user_id=owner,
+                        message=[{"type": "image", "data": {"file": "base64://" + png_b64}}],
+                    )
                 sent = True
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[perception] 登录二维码发送失败：{exc}")
@@ -420,11 +438,8 @@ def _register_qzone_routes() -> None:
 
         from . import login as login_mod
 
-        try:
-            expect = __import__("pathlib").Path("/data/qqbot/config/persona-bridge.token").read_text(encoding="utf-8").strip()
-        except OSError:
-            expect = ""
-        if token != expect:
+        expect = _token_value()
+        if not expect or token != expect:
             return Response(status_code=401)
         sess = login_mod._SESSIONS.get(service)
         if not sess:
@@ -821,6 +836,8 @@ def _register_qzone_routes() -> None:
         """手动叫醒一次（仅本地运维测试用，token 保护）：让她执行一次决策。"""
         from fastapi.responses import JSONResponse
 
+        if not SETTINGS.debug_routes:
+            return JSONResponse({"ok": False, "error": "debug routes disabled"}, status_code=404)
         if not _ok(request):
             return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
         try:
@@ -839,6 +856,8 @@ def _register_qzone_routes() -> None:
         """直连发送一个文件（仅本地运维测试用，token 保护）：绕过决策验证 sender/NapCat。"""
         from fastapi.responses import JSONResponse
 
+        if not SETTINGS.debug_routes:
+            return JSONResponse({"ok": False, "error": "debug routes disabled"}, status_code=404)
         if not _ok(request):
             return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
         try:
@@ -850,7 +869,7 @@ def _register_qzone_routes() -> None:
         name = str(body.get("name") or "").strip()
         if not scope.startswith(("group:", "private:")) or not path:
             return JSONResponse({"ok": False, "error": "need scope + path"}, status_code=400)
-        bot = sender.pick_bot()
+        bot = sender.pick_bot(triggers.config().bot_qq)
         if bot is None:
             return JSONResponse({"ok": False, "error": "没有在线 bot"}, status_code=503)
         ok = await sender.send_file(bot, scope, path, name)
@@ -912,11 +931,8 @@ def _register_qzone_routes() -> None:
 
         from . import qzone
 
-        try:
-            expect = __import__("pathlib").Path("/data/qqbot/config/persona-bridge.token").read_text(encoding="utf-8").strip()
-        except OSError:
-            expect = ""
-        if token != expect:
+        expect = _token_value()
+        if not expect or token != expect:
             return Response(status_code=401)
         png = qzone.qr_png()
         if not png:

@@ -614,7 +614,7 @@ const server = http.createServer(async (req, res) => {
   // 规则：主人的 QQ（默认 1000000002）不允许改名——她是"主人"，这是防冒充的锚点。
   if (url.pathname === '/nicknames') {
     if (!tokenOk(req.headers.authorization)) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-    const OWNER = process.env.PERSONA_OWNER_QQ || '1000000002';
+    const OWNER = process.env.PERSONA_OWNER_QQ || '';
     const FILE = '/persona/data/nicknames.json';
     const load = () => {
       try {

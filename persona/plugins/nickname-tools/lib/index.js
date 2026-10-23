@@ -18,7 +18,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 
 const BRIDGE = process.env.PERSONA_BRIDGE_URL || 'http://127.0.0.1:13101';
 const TOKEN_FILE = process.env.PERSONA_BRIDGE_TOKEN_FILE || '/persona/bridge-token';
-const OWNER_QQ = process.env.PERSONA_OWNER_QQ || '1000000002';
+const OWNER_QQ = process.env.PERSONA_OWNER_QQ || '';
 
 export const name = 'persona-nickname-tools';
 export const inject = ['tools'];

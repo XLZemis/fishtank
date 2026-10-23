@@ -40,6 +40,8 @@ import httpx
 
 from nonebot import logger
 
+from .settings import SETTINGS
+
 
 # Chrome 会校验 Host 头（只接受 IP/localhost），所以用容器 IP 而不是主机名
 def _cdp_url() -> str:
@@ -54,9 +56,9 @@ def _cdp_url() -> str:
     return "http://127.0.0.1:9222"
 
 
-CDP_URL = _cdp_url()
-QZONE = "https://user.qzone.qq.com"
-UIN = "1000000001"
+CDP_URL = SETTINGS.cdp_url or _cdp_url()
+QZONE = SETTINGS.qzone_base
+UIN = SETTINGS.bot_qq
 
 _QZONE_MARKERS = ("的QQ空间", "说点儿什么吧", "今日访客", "好友动态", "写说说")
 _BILI_URL_RE = re.compile(
