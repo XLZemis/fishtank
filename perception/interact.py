@@ -25,11 +25,15 @@ from . import sender
 MAX_TIMES = 20
 MAX_SPAN_SECONDS = 3600
 MAX_ACTIVE_JOBS = 20
-MIN_INTERVAL_IF_REPEAT = 1
+MIN_INTERVAL_IF_REPEAT = 3
 
 # job_id → 简要状态（只保留最近 100 条；不落库）
 _JOBS: dict[str, dict[str, Any]] = {}
 _TASKS: dict[str, asyncio.Task] = {}
+# NapCat/QQ 对短时间连戳/连赞会静默丢弃；这里串行化并强制最小间隔。
+_ACTION_LOCK = asyncio.Lock()
+_MIN_ACTION_GAP_SECONDS = 3.0
+_last_action_at = 0.0
 
 
 def _target_ok(target: str) -> bool:
@@ -45,17 +49,23 @@ async def _execute_once(action: str, target: str, group_id: int | None) -> dict[
     bot = sender.pick_bot(getattr(triggers._config, "bot_qq", None) or None)
     if bot is None:
         raise RuntimeError("QQ bot 不在线（G1 拒绝发送）")
-    if action == "poke":
-        params: dict[str, Any] = {"user_id": str(target)}
-        if group_id:
-            params["group_id"] = str(group_id)
-            params["target_id"] = str(target)
-        await bot.call_api("send_poke", **params)
-    elif action == "like":
-        # 一次只点 1 个；重复由计划器负责，避免一口气把次数点满
-        await bot.call_api("send_like", user_id=str(target), times=1)
-    else:
-        raise ValueError(f"未知 action: {action}")
+    global _last_action_at
+    async with _ACTION_LOCK:
+        gap = _MIN_ACTION_GAP_SECONDS - (time.monotonic() - _last_action_at)
+        if gap > 0:
+            await asyncio.sleep(gap)
+        if action == "poke":
+            params: dict[str, Any] = {"user_id": str(target)}
+            if group_id:
+                params["group_id"] = str(group_id)
+                params["target_id"] = str(target)
+            await bot.call_api("send_poke", **params)
+        elif action == "like":
+            # 一次只点 1 个；重复由计划器负责，避免一口气把次数点满
+            await bot.call_api("send_like", user_id=str(target), times=1)
+        else:
+            raise ValueError(f"未知 action: {action}")
+        _last_action_at = time.monotonic()
     return {"action": action, "target": str(target), "group_id": group_id, "at": int(time.time())}
 
 
@@ -120,7 +130,7 @@ async def start(action: str, target: str, *, group_id: int | None = None,
     warning = ""
     if times > 1 and interval_seconds < MIN_INTERVAL_IF_REPEAT:
         interval_seconds = MIN_INTERVAL_IF_REPEAT
-        warning = "重复动作的 interval 小于 1 秒，已按 1 秒执行"
+        warning = "重复动作的 interval 小于 3 秒，已按 3 秒执行"
     span = start_delay_seconds + max(0, times - 1) * interval_seconds
     if span > MAX_SPAN_SECONDS:
         return {"ok": False, "error": f"计划跨度过长（{span}s，上限 {MAX_SPAN_SECONDS}s）"}

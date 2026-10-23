@@ -85,7 +85,7 @@ export function apply(ctx) {
       'start_delay_seconds=30；不传间隔/次数就是立即做一次。\n' +
       'target 是 5–12 位 QQ 号（也可以写“主人”）；scope 省略时自动用当前会话（群戳/私聊戳）。\n' +
       'avatar 会把 QQ 头像拉到 /persona/out/avatar_<QQ>.jpg，可直接用 read_image 看。\n' +
-      '限制：times 1–20；计划总跨度最多 1 小时；重复动作最小间隔 1 秒；同时最多 20 个计划。',
+      '限制：times 1–20；计划总跨度最多 1 小时；重复动作最小间隔 3 秒（QQ/NapCat 对连戳会静默丢弃）；同时最多 20 个计划。',
     parameters: {
       action: {
         type: 'string',

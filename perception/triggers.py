@@ -1109,7 +1109,7 @@ def _reason_of(trigger: Trigger, body: str) -> str:
 
 
 # ── 被引用消息 / @ 显示名 缓存（2026-10-20 深夜）───────────────────────────────
-# 被引用消息需要展示具体回复内容。reply 段只有 message_id，
+# 用户反馈：肥鱼看不到"具体回复了哪条消息"。reply 段只有 message_id，
 # 需要调 get_msg 取回原消息（昵称/正文/媒体），再渲染成 ↳[回复 谁：……]。
 _QUOTE_TTL = 900          # 被引用消息缓存 15 分钟
 _AT_TTL = 3600            # @ 显示名缓存 1 小时
@@ -1337,7 +1337,7 @@ async def ingest_message(event: Any, bot: Any) -> None:
         # 全类型解析：图片/视频/语音/文件/表情包/链接/卡片/合并转发（递归）
         # @ 名字先解析（群名片/昵称），reply 先取回被引用消息，再一起交给解析器。
         # NapCat 的 message 字段会丢 reply/at，完整段在 original_message；
-        # 解析、@ 名字、reply 取 id 都必须用完整消息，否则Persona看不到回复和 @。
+        # 解析、@ 名字、reply 取 id 都必须用完整消息，否则肥鱼看不到回复和 @。
         full_message = getattr(event, "original_message", None) or event.get_message()
         # 2026-10-22：空文本事件（NapCat 偶发 message.private.friend text=""，疑似输入中）
         # 没有信息，直接丢弃；不叫醒、不入池、不烧 token。只 @ 或只引用仍保留。
@@ -1454,6 +1454,10 @@ async def ingest_notice(event: Any, bot: Any) -> None:
 
         if etype == "notify" and subtype == "poke":
             target = str(getattr(event, "target_id", "") or raw.get("target_id", ""))
+            # NapCat 会把「机器人自己发出的戳」也回执成 poke notice（user_id=bot）；
+            # 这不是用户戳她，记录/触发会污染消息池，直接忽略。
+            if str(getattr(event, "user_id", "") or raw.get("user_id", "")) == str(self_id):
+                return
             is_me = target == self_id
             # 2026-10-21：不再把 QQ 号当昵称；没有群名片/昵称就省略 [昵称]
             sender_raw = raw.get("sender") or {}

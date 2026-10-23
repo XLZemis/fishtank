@@ -59,11 +59,11 @@ class TestInteractExecution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, self.bot.calls[0][1]["times"])
 
     async def test_scheduled_job_runs(self):
-        result = await interact.start("poke", "1000000002", times=2, interval_seconds=1)
+        result = await interact.start("poke", "1000000002", times=2, interval_seconds=3)
         self.assertTrue(result["ok"])
         self.assertFalse(result["executed"])
         job_id = result["job"]["job_id"]
-        for _ in range(30):
+        for _ in range(100):
             status = interact.status(job_id)
             if status["job"]["status"] in ("done", "failed"):
                 break
