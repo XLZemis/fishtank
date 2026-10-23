@@ -1,0 +1,12 @@
+{
+  "name": "@persona/trigger-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "Persona的触发器工具：trigger_list / trigger_add / trigger_remove（改 /persona/triggers.yaml，60s 生效）",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "yaml": "*"
+  }
+}

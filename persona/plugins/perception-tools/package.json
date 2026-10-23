@@ -1,0 +1,9 @@
+{
+  "name": "@persona/perception-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "聊天记录详细查看 + 运行数据统计工具",
+  "peerDependencies": { "@deepseek-ai/dsh-tools": "*" }
+}

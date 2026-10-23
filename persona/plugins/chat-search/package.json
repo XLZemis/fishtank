@@ -1,0 +1,9 @@
+{
+  "name": "@persona/chat-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "Persona的聊天记录检索工具（chat_search）：按文本/群/群友/时间检索只读快照",
+  "peerDependencies": { "@deepseek-ai/dsh-tools": "*" }
+}

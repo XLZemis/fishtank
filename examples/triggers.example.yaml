@@ -1,0 +1,20 @@
+# 最小触发器示例：按你的群号/账号修改
+enabled: true
+private: true
+bot_qq: "1000000001"
+bot_name: "Persona"
+interval_default_seconds: 300
+debounce_seconds: 5
+attach_inline: true
+sticker_enabled: true
+triggers:
+  - id: mention-me
+    type: mention
+    groups: ["1000000003"]
+  - id: poke-me
+    type: poke
+    groups: ["1000000003"]
+  - id: name-call
+    type: keyword
+    groups: ["1000000003"]
+    keywords: ["Persona"]

@@ -1,0 +1,10 @@
+{
+  "name": "@persona/sticker-tools",
+  "version": "0.1.0",
+  "description": "Sticker save + auto vision tagging tool for Persona",
+  "type": "module",
+  "main": "lib/index.js",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
+  }
+}

@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax checks
+        run: |
+          python3 -m compileall -q perception persona/tools scripts
+          node --check bridge/server.mjs
+          for f in persona/plugins/*/lib/index.js; do node --check "$f"; done
+      - name: Install test deps
+        run: pip install -r requirements-dev.txt
+      - name: Unit tests
+        env:
+          PERCEPTION_PARENT: ${{ github.workspace }}
+          DOC2TEXT_PATH: ${{ github.workspace }}/persona/tools/doc2text.py
+        run: python3 -m unittest discover -s tests -v

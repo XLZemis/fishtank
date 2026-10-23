@@ -1,0 +1,9 @@
+{
+  "name": "@persona/nickname-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "给她维护群友自定昵称的工具（绑定 QQ，主人黑名单）",
+  "peerDependencies": { "@deepseek-ai/dsh-tools": "*" }
+}
