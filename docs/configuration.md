@@ -78,8 +78,9 @@
 | `FISHTANK_SMTP_PORT` | 端口，默认 465 |
 | `FISHTANK_SMTP_SECURITY` | `ssl` / `starttls` / `plain`；默认按端口（465→ssl，其余→starttls） |
 | `FISHTANK_SMTP_USER` | 登录用户 |
-| `FISHTANK_SMTP_PASSWORD` / `FISHTANK_SMTP_PASSWORD_FILE` | 授权码/密码，优先 env；文件更安全 |
+| `FISHTANK_SMTP_PASSWORD` / `FISHTANK_SMTP_PASSWORD_FILE` | 授权码/密码；文件更安全（生产用文件） |
 | `FISHTANK_SMTP_FROM` | 发件地址，默认同 USER |
+| `FISHTANK_MAIL_TO` | 默认收件人（`to` 省略时使用；可逗号分隔） |
 | `FISHTANK_SMTP_TIMEOUT` | 超时秒数，默认 45 |
 
 示例（QQ 邮箱/企业邮箱一般用 `ssl` + 465 + 授权码）：

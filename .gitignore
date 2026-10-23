@@ -7,3 +7,6 @@ __pycache__/
 chrome-profile/
 data/
 sessions/
+
+# deployment-only secret
+mail-password

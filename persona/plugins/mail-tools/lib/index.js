@@ -8,11 +8,11 @@ export const inject = ['tools'];
 export function apply(ctx){
   ctx.tools.register(defineTool({
     name:'mail_send',
-    description:'发邮件（SMTP）。to 可以是字符串或字符串数组；attachments 是 /persona 下的文件路径数组。\n'+
+    description:'发邮件（SMTP）。to 可省略（用 FISHTANK_MAIL_TO 默认收件人）；attachments 是 /persona 下的文件路径数组。\n'+
       '需要部署侧配置：FISHTANK_SMTP_HOST/PORT/USER/PASSWORD/FROM；可选 SECURITY=ssl|starttls|plain（默认按端口）。\n'+
       '示例：把 browser_shot 的 /persona/out/shot_xxx.png 作为附件发出去。',
     parameters:{
-      to:{type:'string',description:'收件人，多个用逗号分隔'},
+      to:{type:'string',description:'收件人，多个用逗号分隔；省略用 FISHTANK_MAIL_TO'},
       subject:{type:'string',description:'主题'},
       body:{type:'string',description:'正文'},
       attachments:{type:'array',items:{type:'string'},description:'可选附件路径（仅 /persona 下）'},

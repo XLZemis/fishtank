@@ -53,7 +53,7 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         return fail("参数不是合法 JSON")
 
-    to_raw = data.get("to") or ""
+    to_raw = data.get("to") or env("FISHTANK_MAIL_TO")
     if isinstance(to_raw, (list, tuple)):
         recipients = [str(x).strip() for x in to_raw if str(x).strip()]
     else:

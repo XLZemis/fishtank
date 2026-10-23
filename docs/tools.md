@@ -166,6 +166,7 @@ mail_send: {
 }
 ```
 
+- `to` 可省略，使用部署侧 `FISHTANK_MAIL_TO` 默认收件人；
 - 附件只允许 `/persona` 下文件；
 - 需要部署侧配置 `FISHTANK_SMTP_HOST/PORT/USER/PASSWORD/FROM`，见 `docs/configuration.md`。
 
