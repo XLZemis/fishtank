@@ -68,6 +68,9 @@ sender: 文本 / 图片 / 语音 / 文件 / 表情 / 引用
 
 更完整的工程说明见 [`docs/engineering.md`](docs/engineering.md)；配置变量见 [`docs/configuration.md`](docs/configuration.md)。
 
+浏览器能力（QZone/B站兜底）需要 Python 包 `playwright`，但**不需要**下载浏览器：
+本项目连接外部独立 Chromium 容器（CDP）。
+
 ## 测试
 
 ```bash

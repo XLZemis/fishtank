@@ -34,6 +34,7 @@
 | `FISHTANK_QZONE_BASE` | `https://user.qzone.qq.com` |
 | `FISHTANK_BOT_QQ` | 无默认；读不到时 QZone UIN/登录 URL 不完整 |
 | `FISHTANK_OWNER_QQ` | 无默认；读不到时二维码不私聊发送（不会崩） |
+| `FISHTANK_ASR_MODEL` | `mimo-v2.5-asr`（旧 `PERSONA_ASR_MODEL`） |
 | `FISHTANK_DEBUG_ROUTES` | `0`；仅本地排障时置 1（`/debug/trigger`、`/debug/sendfile`） |
 
 > `PERCEPTION_ARMED`、触发器表、群/关键词/cron/间隔仍留在 `triggers.yaml`，不迁 env。
