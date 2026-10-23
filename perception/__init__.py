@@ -876,14 +876,22 @@ def _register_qzone_routes() -> None:
                 group_id = int(body.get("group_id"))
             except (TypeError, ValueError):
                 group_id = None
+        action = str(body.get("action") or "")
+        target = str(body.get("target") or "")
+        logger.info(
+            f"[perception] interact 请求 action={action} target={target} "
+            f"scope={scope!r} group_id={group_id} times={body.get('times')} "
+            f"interval={body.get('interval_seconds')} delay={body.get('start_delay_seconds')}"
+        )
         result = await interact_mod.start(
-            str(body.get("action") or ""),
-            str(body.get("target") or ""),
+            action,
+            target,
             group_id=group_id,
             times=int(body.get("times") or 1),
             interval_seconds=int(body.get("interval_seconds") or 0),
             start_delay_seconds=int(body.get("start_delay_seconds") or 0),
         )
+        logger.info(f"[perception] interact 结果 action={action} target={target} group={group_id} => {result}")
         return JSONResponse(result)
 
     @app.get("/interact/status")
