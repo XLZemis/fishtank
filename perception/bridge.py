@@ -20,11 +20,11 @@ from typing import Any
 import httpx
 from nonebot import logger
 
-# 容器网络内的服务名（compose 里 dsh-persona 加入 qqbot_qqbot 网络）
-BRIDGE_URL = os.getenv("PERSONA_BRIDGE_URL", "http://dsh-persona:13101").rstrip("/")
+from .settings import SETTINGS
 
-# token 文件复用 qqbot 已挂载的 config 目录（容器内路径），与人格容器读的是同一个文件
-TOKEN_FILE = Path(os.getenv("PERSONA_BRIDGE_TOKEN_FILE", "/data/qqbot/config/persona-bridge.token"))
+# 容器网络内的服务名 / token 路径统一由 settings 管理（见 docs/configuration.md）
+BRIDGE_URL = SETTINGS.bridge_url
+TOKEN_FILE = SETTINGS.bridge_token_file
 
 
 def _token() -> str:

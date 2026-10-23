@@ -27,12 +27,10 @@ from typing import Any
 import httpx
 from nonebot import logger
 
-MIMO_BASE = "https://api.xiaomimimo.com/v1"
-MIMO_MODEL = os.environ.get("PERSONA_ASR_MODEL", "mimo-v2.5-asr")
-KEY_FILES = (
-    "/data/qqbot/config/mimo.key",  # 宿主写入（600），容器只读挂载
-    "/data/qqbot/config/persona-bridge.token",  # 兜底（不对，但至少能报错可见）
-)
+from .settings import SETTINGS
+
+MIMO_BASE = SETTINGS.mimo_base
+MIMO_MODEL = os.environ.get("FISHTANK_ASR_MODEL", os.environ.get("PERSONA_ASR_MODEL", "mimo-v2.5-asr"))
 MAX_BYTES = 8 * 1024 * 1024  # 8MB 以上的语音不转写（够长的一句话约 100KB）
 _lock = asyncio.Lock()
 _last_call = 0.0
@@ -40,7 +38,7 @@ _last_call = 0.0
 
 def _api_key() -> str:
     """从挂载文件读 MiMo key（不想把 key 塞进容器的环境变量）。"""
-    path = Path(KEY_FILES[0])
+    path = SETTINGS.mimo_key_file
     try:
         return path.read_text(encoding="utf-8").strip()
     except OSError:

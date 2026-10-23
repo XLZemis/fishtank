@@ -23,6 +23,7 @@ from nonebot import logger
 from nonebot.adapters.onebot.v11 import Bot
 
 from . import bus
+from .settings import SETTINGS
 
 # ── 出站幂等（避免同一条内容重复发送）───────────────────────────────────────
 # 同一个 scope + 同一份内容 10 分钟内只发一次；重复的直接跳过并返回 False。
@@ -396,13 +397,14 @@ async def send_file(bot: Bot, scope: str, url: str, name: str = "") -> bool:
     可进入/可读（部署时 `chgrp 1000 && chmod 2750`，文件 644）；否则 NapCat 的
     `fs.existsSync()` 会返回 false，报 `识别URL失败, uri= /data/qqbot/exports/...`。
     """
-    # 本地文件：她写到 /persona/out/ 的文件，NapCat 能从 /data/qqbot/exports/ 读到
+    # 本地文件：她写到 /persona/out/ 的文件，NapCat 能从 settings.exports_dir 读到
+    prefix = SETTINGS.persona_out_prefix + "/"
     local = ""
-    if url.startswith("/persona/out/"):
-        local = "/data/qqbot/exports/" + url[len("/persona/out/"):]
+    if url.startswith(prefix):
+        local = str(SETTINGS.exports_dir / url[len(prefix):])
         url = local
     elif url.startswith("out/"):
-        local = "/data/qqbot/exports/" + url[len("out/"):]
+        local = str(SETTINGS.exports_dir / url[len("out/"):])
         url = local
     if not url or not (re.match(r"^https?://", url) or local):
         logger.warning(f"[perception] send_file 只支持 http(s) URL 或 /persona/out/ 下的文件：{url[:60]}")
@@ -453,11 +455,12 @@ async def send_segments(bot: Bot, scope: str, segments: list[dict], kind: str = 
 
 
 def _local_or_url(path: str) -> str:
-    """把 /persona/out/xxx 映射成 NapCat 能读的 /data/qqbot/exports/xxx。"""
-    if path.startswith("/persona/out/"):
-        return "/data/qqbot/exports/" + path[len("/persona/out/"):]
+    """把她看到的 /persona/out/xxx 映射成 NapCat 能读的 exports 路径。"""
+    prefix = SETTINGS.persona_out_prefix + "/"
+    if path.startswith(prefix):
+        return str(SETTINGS.exports_dir / path[len(prefix):])
     if path.startswith("out/"):
-        return "/data/qqbot/exports/" + path[len("out/"):]
+        return str(SETTINGS.exports_dir / path[len("out/"):])
     return path
 
 
