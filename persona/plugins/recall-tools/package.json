@@ -1,0 +1,1 @@
+{"name":"@persona/recall-tools","version":"0.1.0","description":"Recall recently sent messages","type":"module","main":"lib/index.js","peerDependencies":{"@deepseek-ai/dsh-tools":"*"}}

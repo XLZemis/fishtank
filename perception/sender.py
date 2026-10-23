@@ -25,7 +25,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from . import bus
 from .settings import SETTINGS
 
-# ── 出站幂等（避免同一条内容重复发送）───────────────────────────────────────
+# ── 出站幂等（用户 2026-10-17 事故：同一条汇报被发了 3 次）───────────────────
 # 同一个 scope + 同一份内容 10 分钟内只发一次；重复的直接跳过并返回 False。
 # 进程内表即可：重启后重新计窗口，不影响正确性。
 DEDUP_WINDOW_SECONDS = 600
@@ -54,6 +54,83 @@ def _is_duplicate(scope: str, kind: str, token: str) -> bool:
 
 # QQ 单条消息字数上限约 4500；这里按纯文本保守截断，避免超长被协议端拒发
 MAX_CHARS_PER_MESSAGE = 900
+# ── 最近发送记录 / 主动撤回 ───────────────────────────────────────────────────
+# OneBot 的 send_* 会返回 message_id；保留每个 scope 最近发送的消息，撤回工具只允许
+# 撤回这些“Persona自己刚发的”消息，避免误删别人的消息。
+_SENT_MAX = 80
+_SENT_CACHE: dict[str, list[dict[str, Any]]] = {}
+
+
+def _remember_sent(scope: str, response: Any, kind: str, text: str = "") -> None:
+    try:
+        data = response if isinstance(response, dict) else {}
+        mid = data.get("message_id") or data.get("messageId") or data.get("msg_id")
+        if mid is None:
+            return
+        item = {
+            "message_id": str(mid),
+            "kind": str(kind),
+            "text": str(text or "")[:120],
+            "at": int(time.time()),
+        }
+        bucket = _SENT_CACHE.setdefault(str(scope), [])
+        bucket.append(item)
+        del bucket[:-_SENT_MAX]
+    except Exception:  # noqa: BLE001
+        logger.debug("[perception] 记录 message_id 失败（忽略）", exc_info=True)
+
+
+def recent_sent(scope: str, limit: int = 10) -> list[dict[str, Any]]:
+    """最近由Persona发出的消息（用于撤回/排障）。"""
+    rows = list(_SENT_CACHE.get(str(scope), []))
+    return rows[-max(1, min(int(limit), _SENT_MAX)):]
+
+
+async def recall_last(
+    bot: Bot,
+    scope: str,
+    *,
+    count: int = 1,
+    message_id: str | None = None,
+) -> dict[str, Any]:
+    """主动撤回Persona自己最近发送的消息。
+
+    · 只认当前进程里记录过的 message_id，绝不按用户给的消息 id 删别人的消息；
+    · QQ 非管理员通常只有 2 分钟撤回窗口，超时返回明确错误；
+    · 成功后从缓存移除，避免重复撤回。
+    """
+    now = int(time.time())
+    max_age = max(1, int(SETTINGS.recall_max_age_seconds))
+    bucket = _SENT_CACHE.get(str(scope), [])
+    if message_id:
+        targets = [row for row in bucket if str(row.get("message_id")) == str(message_id)]
+        if not targets:
+            return {"ok": False, "error": "message_id 不在Persona最近发送记录里", "recalled": []}
+        targets = targets[-1:]
+    else:
+        count = max(1, min(int(count or 1), 10))
+        targets = bucket[-count:]
+    if not targets:
+        return {"ok": False, "error": "没有可撤回的最近消息", "recalled": []}
+
+    recalled: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for row in targets:
+        mid = str(row.get("message_id"))
+        age = now - int(row.get("at") or 0)
+        if age > max_age:
+            errors.append(f"#{mid} 超过 {max_age}s 撤回窗口（{age}s）")
+            continue
+        try:
+            await bot.call_api("delete_msg", message_id=int(mid))
+            recalled.append({"message_id": mid, "kind": row.get("kind"), "text": row.get("text")})
+            try:
+                bucket.remove(row)
+            except ValueError:
+                pass
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"#{mid} {type(exc).__name__}: {exc}"[:200])
+    return {"ok": bool(recalled), "recalled": recalled, "errors": errors}
 
 
 def pick_bot(bot_qq: str | None = None) -> Bot | None:
@@ -61,7 +138,7 @@ def pick_bot(bot_qq: str | None = None) -> Bot | None:
 
     规则：
         · 配置了 bot_qq → 只认 self_id == bot_qq；它不在线就返回 None，
-          **绝不 fallback 到"随便一个在线 bot"**（避免误用其他适配器造成误发）；
+          **绝不 fallback 到"随便一个在线 bot"**（上次 4 条消息漏进真群就是这条路）；
         · 没配 bot_qq（只在测试里出现）才允许取任意一个。
     调用方拿到 None 必须**放弃发送**并记一条失败，而不是换通道。
     """
@@ -100,11 +177,12 @@ async def send_group(bot: Bot, group_id: int | str, messages: list[str], delay_m
         try:
             members = _member_map(f"group:{group_id}")
             payload = _build_segments(text, members)
-            await bot.call_api(
+            response = await bot.call_api(
                 "send_group_msg",
                 group_id=int(group_id),
                 message=payload,
             )
+            _remember_sent(f"group:{group_id}", response, "text", text)
             sent += 1
             logger.info(f"[perception] 已发言 group={group_id} ({index + 1}/{len(messages)}): {text[:60]}")
         except Exception as exc:  # noqa: BLE001
@@ -117,7 +195,7 @@ async def send_group(bot: Bot, group_id: int | str, messages: list[str], delay_m
 
 
 async def send_private(bot: Bot, user_id: int | str, messages: list[str], delay_ms: int = 1500) -> int:
-    """私聊发送"""
+    """私聊发送（灰度第 ① 级用得上）"""
     if _is_duplicate(f"private:{user_id}", "text", "\n".join(messages)):
         return 0
     sent = 0
@@ -126,7 +204,8 @@ async def send_private(bot: Bot, user_id: int | str, messages: list[str], delay_
         if not text:
             continue
         try:
-            await bot.call_api("send_private_msg", user_id=int(user_id), message=text)
+            response = await bot.call_api("send_private_msg", user_id=int(user_id), message=text)
+            _remember_sent(f"private:{user_id}", response, "text", text)
             sent += 1
         except Exception as exc:  # noqa: BLE001
             logger.exception(f"[perception] 私聊发送失败 user={user_id}: {exc}")
@@ -202,12 +281,13 @@ async def send_sticker(bot: Bot, scope: str, data: bytes, ext: str, name: str = 
     gid = group_id_of(scope)
     try:
         if gid is not None:
-            await bot.call_api("send_group_msg", group_id=gid, message=[segment])
+            response = await bot.call_api("send_group_msg", group_id=gid, message=[segment])
         else:
             uid = user_id_of(scope)
             if uid is None:
                 return False
-            await bot.call_api("send_private_msg", user_id=uid, message=[segment])
+            response = await bot.call_api("send_private_msg", user_id=uid, message=[segment])
+        _remember_sent(scope, response, "sticker", name)
         logger.info(f"[perception] 表情包已发出 scope={scope} name={name} {len(data)}B")
         return True
     except Exception:  # noqa: BLE001
@@ -219,17 +299,18 @@ async def send_sticker(bot: Bot, scope: str, data: bytes, ext: str, name: str = 
 MAX_MEDIA_BYTES = 8 * 1024 * 1024  # base64 内联上限（再大就走 URL 让协议端自己拉）
 
 
-async def _send_payload(bot: Bot, scope: str, segments: list[dict]) -> bool:
+async def _send_payload(bot: Bot, scope: str, segments: list[dict], kind: str = "media") -> bool:
     """把消息段数组发到 scope（群/私聊）。异常只记日志。"""
     gid = group_id_of(scope)
     try:
         if gid is not None:
-            await bot.call_api("send_group_msg", group_id=gid, message=segments)
+            response = await bot.call_api("send_group_msg", group_id=gid, message=segments)
         else:
             uid = user_id_of(scope)
             if uid is None:
                 return False
-            await bot.call_api("send_private_msg", user_id=uid, message=segments)
+            response = await bot.call_api("send_private_msg", user_id=uid, message=segments)
+        _remember_sent(scope, response, kind)
         return True
     except Exception:  # noqa: BLE001
         logger.exception(f"[perception] 媒体发送失败 scope={scope}")
@@ -244,7 +325,7 @@ async def send_image_bytes(bot: Bot, scope: str, data: bytes, ext: str = "jpg") 
         logger.warning(f"[perception] 图片过大或为空，跳过 {len(data)}B")
         return False
     b64 = base64.b64encode(data).decode("ascii")
-    return await _send_payload(bot, scope, [{"type": "image", "data": {"file": "base64://" + b64}}])
+    return await _send_payload(bot, scope, [{"type": "image", "data": {"file": "base64://" + b64}}], kind="image")
 
 
 async def send_media_url(bot: Bot, scope: str, kind: str, url: str) -> bool:
@@ -252,7 +333,7 @@ async def send_media_url(bot: Bot, scope: str, kind: str, url: str) -> bool:
     if not url or _is_duplicate(scope, kind, url):
         return False
     seg_type = "video" if kind == "video" else "image"
-    return await _send_payload(bot, scope, [{"type": seg_type, "data": {"file": url}}])
+    return await _send_payload(bot, scope, [{"type": seg_type, "data": {"file": url}}], kind=kind)
 
 
 async def send_link_card(bot: Bot, scope: str, url: str, title: str = "", desc: str = "") -> bool:
@@ -260,7 +341,8 @@ async def send_link_card(bot: Bot, scope: str, url: str, title: str = "", desc: 
     if not url or _is_duplicate(scope, "link", f"{url}|{title}"):
         return False
     return await _send_payload(
-        bot, scope, [{"type": "share", "data": {"url": url, "title": title or url, "content": desc or ""}}]
+        bot, scope, [{"type": "share", "data": {"url": url, "title": title or url, "content": desc or ""}}],
+        kind="link",
     )
 
 
@@ -276,12 +358,13 @@ async def send_forward(bot: Bot, scope: str, nodes: list[dict]) -> bool:
     ]
     try:
         if gid is not None:
-            await bot.call_api("send_group_forward_msg", group_id=gid, messages=payload_nodes)
+            response = await bot.call_api("send_group_forward_msg", group_id=gid, messages=payload_nodes)
         else:
             uid = user_id_of(scope)
             if uid is None:
                 return False
-            await bot.call_api("send_private_forward_msg", user_id=uid, messages=payload_nodes)
+            response = await bot.call_api("send_private_forward_msg", user_id=uid, messages=payload_nodes)
+        _remember_sent(scope, response, "forward")
         return True
     except Exception:  # noqa: BLE001
         logger.exception(f"[perception] 合并转发发送失败 scope={scope}")
@@ -416,14 +499,14 @@ async def send_file(bot: Bot, scope: str, url: str, name: str = "") -> bool:
     user_id = user_id_of(scope)
     try:
         if group_id is not None:
-            await bot.call_api(
+            response = await bot.call_api(
                 "upload_group_file",
                 group_id=int(group_id),
                 file=url,
                 name=filename,
             )
         elif user_id is not None:
-            await bot.call_api(
+            response = await bot.call_api(
                 "upload_private_file",
                 user_id=int(user_id),
                 file=url,
@@ -431,6 +514,7 @@ async def send_file(bot: Bot, scope: str, url: str, name: str = "") -> bool:
             )
         else:
             return False
+        _remember_sent(scope, response, "file", filename)
         logger.info(f"[perception] 已发文件 scope={scope} name={filename}")
         return True
     except Exception as exc:  # noqa: BLE001
@@ -448,7 +532,7 @@ async def send_segments(bot: Bot, scope: str, segments: list[dict], kind: str = 
     token = repr(segments)[:400]
     if _is_duplicate(scope, kind, token):
         return False
-    ok = await _send_payload(bot, scope, segments)
+    ok = await _send_payload(bot, scope, segments, kind=kind)
     if ok:
         logger.info(f"[perception] 已发 {kind} scope={scope} 段数={len(segments)}")
     return ok
@@ -516,6 +600,7 @@ async def send_quote_reply(bot: Bot, scope: str, message_id: int | None, text: s
             {"type": "reply", "data": {"id": str(message_id)}},
             {"type": "text", "data": {"text": " " + clean}},
         ],
+        kind="quote",
     )
 
 

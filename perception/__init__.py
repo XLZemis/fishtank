@@ -134,11 +134,11 @@ async def _handle_at(bot: Bot, event: MessageEvent) -> None:
     logger.debug("[perception] @ 接管生效，已阻止旧 @ 回复")
 
 
-# ── 私聊接管（谨慎阶段；默认关闭）────────────────────────────────────────
+# ── 私聊接管（灰度第 ① 级；默认关闭）────────────────────────────────────────
 
 
 async def _private_rule(event: MessageEvent) -> bool:
-    """私聊接管：只有 triggers.yaml 里 private: true 时才生效（谨慎阶段）"""
+    """私聊接管：只有 triggers.yaml 里 private: true 时才生效（灰度第①级）"""
     if not isinstance(event, PrivateMessageEvent):
         return False
     scope = bus.scope_of(event)
@@ -924,6 +924,65 @@ def _register_qzone_routes() -> None:
             return JSONResponse({"ok": False, "error": "没有在线 bot"}, status_code=503)
         ok = await sender.send_file(bot, scope, path, name)
         return JSONResponse({"ok": bool(ok), "scope": scope, "path": path, "name": name})
+
+    @app.post("/tts/say")
+    async def tts_say(request: Request):
+        """MiMo TTS 合成并（可选）直接作为语音发出。"""
+        from fastapi.responses import JSONResponse
+
+        from . import tts as tts_mod
+
+        if not _ok(request):
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        scope = str(body.get("scope") or "").strip()
+        if not scope.startswith(("group:", "private:")):
+            return JSONResponse({"ok": False, "error": "scope 必须是 group:... 或 private:..."}, status_code=400)
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return JSONResponse({"ok": False, "error": "text 为空"}, status_code=400)
+        got = await tts_mod.synthesize_to_exports(
+            text,
+            voice=str(body.get("voice") or tts_mod.DEFAULT_VOICE),
+            style=str(body.get("style") or SETTINGS.tts_style),
+            tag=str(body.get("tag") or ""),
+        )
+        if not got.get("ok"):
+            return JSONResponse(got, status_code=502)
+        if bool(body.get("send", True)):
+            bot = sender.pick_bot(triggers.config().bot_qq)
+            if bot is None:
+                return JSONResponse({**got, "ok": False, "error": "没有在线 bot，只生成了文件"}, status_code=503)
+            got["sent"] = await sender.send_voice(bot, scope, str(got["view_path"]))
+        return JSONResponse(got)
+
+    @app.post("/message/recall")
+    async def message_recall(request: Request):
+        """撤回Persona自己最近发送的消息（只认 sender 的已发送缓存）。"""
+        from fastapi.responses import JSONResponse
+
+        if not _ok(request):
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        scope = str(body.get("scope") or "").strip()
+        if not scope.startswith(("group:", "private:")):
+            return JSONResponse({"ok": False, "error": "scope 必须是 group:... 或 private:..."}, status_code=400)
+        bot = sender.pick_bot(triggers.config().bot_qq)
+        if bot is None:
+            return JSONResponse({"ok": False, "error": "没有在线 bot"}, status_code=503)
+        result = await sender.recall_last(
+            bot,
+            scope,
+            count=int(body.get("count") or 1),
+            message_id=str(body.get("message_id") or "") or None,
+        )
+        return JSONResponse(result)
 
     @app.post("/interact")
     async def interaction(request: Request):

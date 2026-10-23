@@ -34,6 +34,10 @@
       name: '/data/dsh-install/node_modules/@persona/napcat-tools/lib/index.js'
     - id: persona-mail-tools
       name: '/data/dsh-install/node_modules/@persona/mail-tools/lib/index.js'
+    - id: persona-recall-tools
+      name: '/data/dsh-install/node_modules/@persona/recall-tools/lib/index.js'
+    - id: persona-tts-tools
+      name: '/data/dsh-install/node_modules/@persona/tts-tools/lib/index.js'
 
 # ── 人格 + 记忆锚点 ────────────────────────────────────────────────────────
 - id: system-prompt

@@ -1,6 +1,6 @@
 """附带轮（outbound.py）—— 她说完话后，决定要不要再发点「东西」
 
-图片、视频、链接、合并转发这些内容也要能「发出去」。
+用户要求（2026-10-17）：图片、视频、链接、合并转发这些东西也要能「发出去」。
 这里用**一次额外的决策调用**实现，完全不碰主 SPEAK 契约（桥用 parse:false 只回原文）：
 
     平台：你刚才说了……这批里能直接发出去的有 #12 图片 / #14 视频 / #15 链接
@@ -105,7 +105,7 @@ async def _do_sticker(
 ) -> dict[str, Any]:
     """表情包：检索候选 →（可选）她审阅 → 发送。
 
-    审阅是**可选项**：`sticker_review_enabled: false` 时直接发最高分那张，
+    审阅是**可选项**（用户 2026-10-17）：`sticker_review_enabled: false` 时直接发最高分那张，
     少一次模型调用；true 时保留"她亲眼看一眼再选"的流程。
     """
     candidates = await sticker.resolve(query, limit=3)
@@ -141,6 +141,12 @@ async def _do_attach(scope: str, arg: str, media_rows: list[dict[str, Any]], bot
     sent, errors = 0, []
     for mid in wanted:
         row = by_id.get(mid)
+        if not row:
+            # 她有时会引用本批之前的图片（prompt 里见过 id）；只要还在同 scope
+            # 的媒体池里，就直接按 id 取，不能因为“不在本批”把已缓存的图判死。
+            rows = await bus.media_by_ids([mid])
+            if rows and str(rows[0].get("scope") or "") == str(scope):
+                row = rows[0]
         if not row:
             errors.append(f"#{mid} 不在本批")
             continue

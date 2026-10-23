@@ -19,9 +19,9 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(24, s.media_batch_limit)
         self.assertEqual(12, s.media_prefetch_limit)
         self.assertEqual(24, s.media_prompt_limit)
-        self.assertEqual(24, s.media_batch_limit)
-        self.assertEqual(12, s.media_prefetch_limit)
-        self.assertEqual(24, s.media_prompt_limit)
+        self.assertEqual("mimo-v2.5-tts", s.tts_model)
+        self.assertEqual("冰糖", s.tts_voice)
+        self.assertEqual(120, s.recall_max_age_seconds)
 
     def test_overrides_and_derived_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

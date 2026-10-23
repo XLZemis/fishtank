@@ -67,6 +67,11 @@ class Settings:
     media_batch_limit: int
     media_prefetch_limit: int
     media_prompt_limit: int
+    tts_model: str
+    tts_voice: str
+    tts_style: str
+    tts_max_chars: int
+    recall_max_age_seconds: int
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -128,6 +133,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     media_batch = _int(("FISHTANK_MEDIA_BATCH_LIMIT",), 24)
     media_prefetch = _int(("FISHTANK_MEDIA_PREFETCH_LIMIT",), 12)
     media_prompt = _int(("FISHTANK_MEDIA_PROMPT_LIMIT",), 24)
+    tts_model = _first(e, "FISHTANK_TTS_MODEL", default="mimo-v2.5-tts")
+    tts_voice = _first(e, "FISHTANK_TTS_VOICE", default="冰糖")
+    tts_style = _first(e, "FISHTANK_TTS_STYLE", default="温柔、轻快、有点俏皮的女仆语气。")
+    tts_max_chars = _int(("FISHTANK_TTS_MAX_CHARS",), 500)
+    recall_max_age = _int(("FISHTANK_RECALL_MAX_AGE_S",), 120)
     return Settings(
         data_root=data_root,
         persona_root=persona_root,
@@ -166,6 +176,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         media_batch_limit=media_batch,
         media_prefetch_limit=media_prefetch,
         media_prompt_limit=media_prompt,
+        tts_model=tts_model,
+        tts_voice=tts_voice,
+        tts_style=tts_style,
+        tts_max_chars=tts_max_chars,
+        recall_max_age_seconds=recall_max_age,
     )
 
 

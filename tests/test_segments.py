@@ -57,4 +57,3 @@ class TestParseSegments(unittest.TestCase):
         self.assertEqual(10, len(parsed.media))
         self.assertIn("{{M0}}", parsed.text)
         self.assertIn("{{M9}}", parsed.text)
-        self.assertIn("{{M0}}", parsed.text)

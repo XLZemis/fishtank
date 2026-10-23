@@ -95,3 +95,15 @@ FISHTANK_SMTP_USER=xxx@qq.com
 FISHTANK_SMTP_PASSWORD=<授权码>
 FISHTANK_SMTP_FROM=xxx@qq.com
 ```
+
+## TTS / 撤回
+
+| 变量 | 默认 |
+|---|---|
+| `FISHTANK_TTS_MODEL` | `mimo-v2.5-tts`（预置音色；MiMo 限时免费） |
+| `FISHTANK_TTS_VOICE` | `冰糖`（可选 冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean/mimo_default） |
+| `FISHTANK_TTS_STYLE` | 温柔、轻快、有点俏皮的女仆语气。 |
+| `FISHTANK_TTS_MAX_CHARS` | `500` |
+| `FISHTANK_RECALL_MAX_AGE_S` | `120`（QQ 普通成员撤回窗口） |
+
+TTS key 复用 `/data/qqbot/config/mimo.key`；不额外配置。
