@@ -126,3 +126,9 @@ TTS key 复用 `/data/qqbot/config/mimo.key`；不额外配置。
 
 命令：`/help` `/status` `/stats [小时]` `/pause <scope> [分钟]` `/resume <scope>` `/scopes`。
 scope 形状：`group:<群号>` 或 `private:<QQ>`。
+
+## 浏览器 CDP（2026-10-25 Chrome 156 起）
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `FISHTANK_CDP_URL` | `http://qqbot-chromium:9223` | 感知层连接浏览器的地址。Chrome ≥136 只把 CDP 绑在容器 loopback，镜像内用 socat 转发到 9223；代码会把主机名解析成 IP 再连（Chrome 校验 Host 头） |

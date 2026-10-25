@@ -47,9 +47,25 @@ from . import netguard
 from .settings import SETTINGS
 
 
-# Chrome 会校验 Host 头（只接受 IP/localhost），所以用容器 IP 而不是主机名
+# Chrome 会校验 Host 头（只接受 IP/localhost），所以用容器 IP 而不是主机名。
+# 2026-10-25：CDP 改为 socat 边车（9223）后，配置里若写的是主机名，也要解析成 IP 再连，
+# 否则 Chrome 收到 Host: qqbot-chromium:9223 会直接返回 500。
 def _cdp_url() -> str:
     import socket
+    from urllib.parse import urlsplit, urlunsplit
+
+    configured = str(SETTINGS.cdp_url or "").strip()
+    if configured:
+        try:
+            parts = urlsplit(configured)
+            host = parts.hostname or ""
+            ip = socket.gethostbyname(host) if host else ""
+            if ip:
+                port = f":{parts.port}" if parts.port else ""
+                return urlunsplit((parts.scheme or "http", ip + port, parts.path or "", "", ""))
+        except Exception:  # noqa: BLE001
+            pass
+        return configured
 
     for host in ("qqbot-chromium", "127.0.0.1"):
         try:
@@ -60,7 +76,8 @@ def _cdp_url() -> str:
     return "http://127.0.0.1:9222"
 
 
-CDP_URL = SETTINGS.cdp_url or _cdp_url()
+# 仅用于日志/排障；真正连接时每次重新解析（容器重建后 IP 会变）
+CDP_URL = _cdp_url()
 QZONE = SETTINGS.qzone_base
 UIN = SETTINGS.bot_qq
 
@@ -88,7 +105,7 @@ async def _connect():
 
     if _pw is None:
         _pw = await async_playwright().start()
-    browser = await _pw.chromium.connect_over_cdp(CDP_URL)
+    browser = await _pw.chromium.connect_over_cdp(_cdp_url())
     ctx = browser.contexts[0] if browser.contexts else await browser.new_context()
     return _pw, browser, ctx
 
