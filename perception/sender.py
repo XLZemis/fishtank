@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import re
 import time
 from typing import Any
@@ -22,7 +23,7 @@ import nonebot
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import Bot
 
-from . import bus
+from . import bridge, bus, netguard
 from .settings import SETTINGS
 
 # ── 出站幂等（用户 2026-10-17 事故：同一条汇报被发了 3 次）───────────────────
@@ -216,7 +217,7 @@ async def send_private(bot: Bot, user_id: int | str, messages: list[str], delay_
 
 
 def group_id_of(scope: str) -> int | None:
-    """scope → 群号（group:1000000003 → 1000000003）；私聊返回 None"""
+    """scope → 群号（group:1000000004 → 1000000004）；私聊返回 None"""
     if scope.startswith("group:"):
         try:
             return int(scope.split(":", 1)[1])
@@ -336,14 +337,46 @@ async def send_media_url(bot: Bot, scope: str, kind: str, url: str) -> bool:
     return await _send_payload(bot, scope, [{"type": seg_type, "data": {"file": url}}], kind=kind)
 
 
+def _link_card_json(url: str, title: str, desc: str = "") -> str:
+    """构造 QQ 结构化分享卡片（com.tencent.structmsg）。
+
+    为什么不是 `share` 段：NapCat 对 `share` 直接回 retcode=1200「未知的消息类型：share」，
+    实测 11 次 LINK 全部失败（2026-10-21 ~ 10-24）。`json` 段是 NapCat 支持的卡片通道；
+    卡面参数尽量保守，缺失时只显示标题 + 链接。
+    """
+    card = {
+        "app": "com.tencent.structmsg",
+        "desc": "新闻",
+        "view": "news",
+        "ver": "0.0.0.1",
+        "prompt": f"[分享]{title or url}",
+        "meta": {
+            "news": {
+                "title": title or url,
+                "desc": desc or title or url,
+                "jumpUrl": url,
+                "preview": "",
+            }
+        },
+    }
+    return json.dumps(card, ensure_ascii=False)
+
+
 async def send_link_card(bot: Bot, scope: str, url: str, title: str = "", desc: str = "") -> bool:
-    """发一张链接卡片（share 段）"""
+    """发一张链接卡片：优先 json 卡片，失败退回纯文本「标题 + URL」。
+
+    纯文本兜底保证"链接一定能发出去"——卡片渲染依赖协议端/客户端，不能作为唯一通道。
+    """
+    url = str(url or "").strip()
     if not url or _is_duplicate(scope, "link", f"{url}|{title}"):
         return False
-    return await _send_payload(
-        bot, scope, [{"type": "share", "data": {"url": url, "title": title or url, "content": desc or ""}}],
-        kind="link",
-    )
+    if await _send_payload(
+        bot, scope, [{"type": "json", "data": {"data": _link_card_json(url, title, desc)}}], kind="link"
+    ):
+        return True
+    logger.warning(f"[perception] 链接卡片发送失败，退回纯文本 scope={scope} url={url[:80]}")
+    text = f"{title or url}\n{url}" if title else url
+    return await send_segments(bot, scope, [{"type": "text", "data": {"text": text}}], kind="link_text")
 
 
 async def send_forward(bot: Bot, scope: str, nodes: list[dict]) -> bool:
@@ -480,17 +513,20 @@ async def send_file(bot: Bot, scope: str, url: str, name: str = "") -> bool:
     可进入/可读（部署时 `chgrp 1000 && chmod 2750`，文件 644）；否则 NapCat 的
     `fs.existsSync()` 会返回 false，报 `识别URL失败, uri= /data/qqbot/exports/...`。
     """
-    # 本地文件：她写到 /persona/out/ 的文件，NapCat 能从 settings.exports_dir 读到
-    prefix = SETTINGS.persona_out_prefix + "/"
-    local = ""
-    if url.startswith(prefix):
-        local = str(SETTINGS.exports_dir / url[len(prefix):])
+    # 本地文件：/persona/out（她写的中转目录）；refs/stickers/media 经桥复制到 out。
+    # 远程文件：只允许公网 http(s)（netguard 拒绝内网/回环/链路本地/元数据地址）。
+    raw = str(url or "").strip()
+    local = await resolve_outbound_file(raw)
+    if local:
         url = local
-    elif url.startswith("out/"):
-        local = str(SETTINGS.exports_dir / url[len("out/"):])
-        url = local
-    if not url or not (re.match(r"^https?://", url) or local):
-        logger.warning(f"[perception] send_file 只支持 http(s) URL 或 /persona/out/ 下的文件：{url[:60]}")
+    elif re.match(r"^https?://", raw, re.I):
+        decision = netguard.check_url(raw)
+        if not decision.ok:
+            logger.warning(f"[perception] 拒绝发送远程文件 {raw[:100]}（{decision.reason}）")
+            return False
+        url = raw
+    else:
+        logger.warning(f"[perception] send_file 只支持公网 http(s) 或 /persona/out、refs、stickers、media 下的文件：{raw[:60]}")
         return False
     if _is_duplicate(scope, "file", url):
         return False
@@ -538,19 +574,66 @@ async def send_segments(bot: Bot, scope: str, segments: list[dict], kind: str = 
     return ok
 
 
-def _local_or_url(path: str) -> str:
-    """把她看到的 /persona/out/xxx 映射成 NapCat 能读的 exports 路径。"""
+# ── 出站文件路径（2026-10-25 安全复核）───────────────────────────────────────
+# 只有两类本地文件允许发出去：
+#   1. /persona/out/xxx（她写的中转目录，NapCat 同路径只读挂载）；
+#   2. /persona/refs、/persona/stickers、/persona/media 下的文件——
+#      由桥（人格容器）复制到 /persona/out 再发，感知层不直接读这些目录。
+# 一律 resolve 后校验目录边界，防止 /persona/out/../../ 逃逸。
+_STAGEABLE_PREFIXES = ("/persona/refs/", "/persona/stickers/", "/persona/media/")
+
+
+def _resolve_export_file(path: str) -> str | None:
+    """把 /persona/out/xxx 或 out/xxx 映射成 exports 路径，并校验没有越界。"""
+    raw = str(path or "").strip()
+    if not raw:
+        return None
     prefix = SETTINGS.persona_out_prefix + "/"
-    if path.startswith(prefix):
-        return str(SETTINGS.exports_dir / path[len(prefix):])
-    if path.startswith("out/"):
-        return str(SETTINGS.exports_dir / path[len("out/"):])
-    return path
+    if raw.startswith(prefix):
+        rel = raw[len(prefix):]
+    elif raw.startswith("out/"):
+        rel = raw[len("out/"):]
+    else:
+        return None
+    if not rel:
+        return None
+    root = SETTINGS.exports_dir.resolve()
+    candidate = (root / rel).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        logger.warning(f"[perception] 拒绝越界的发送路径：{raw[:120]}")
+        return None
+    if not candidate.is_file():
+        logger.warning(f"[perception] 发送路径不存在或不是文件：{raw[:120]}")
+        return None
+    return str(candidate)
+
+
+async def _stage_outbox_file(path: str) -> str | None:
+    """把 refs/stickers/media 下的文件经桥复制到 /persona/out，再按 exports 规则解析。"""
+    raw = str(path or "").strip()
+    if not raw.startswith(_STAGEABLE_PREFIXES):
+        logger.warning(f"[perception] 不允许发送该路径：{raw[:120]}")
+        return None
+    result = await bridge.stage_file(raw)
+    if not result.get("ok"):
+        logger.warning(f"[perception] 文件中转失败：{raw[:80]}（{result.get('error')}）")
+        return None
+    return _resolve_export_file(str(result.get("out_path") or ""))
+
+
+async def resolve_outbound_file(path: str) -> str | None:
+    """本地路径 → NapCat 可读路径；/persona/refs 等目录先经桥中转。"""
+    local = _resolve_export_file(path)
+    if local:
+        return local
+    return await _stage_outbox_file(path)
 
 
 async def send_voice(bot: Bot, scope: str, path: str) -> bool:
-    """发语音（record 段）。文件先放 /persona/out/，或给 http(s) URL。"""
-    target = _local_or_url(path.strip())
+    """发语音（record 段）。文件先放 /persona/out/（refs/stickers/media 会经桥中转），或给公网 URL。"""
+    target = await resolve_outbound_file(path.strip())
     if not target:
         return False
     return await send_segments(bot, scope, [{"type": "record", "data": {"file": target}}], kind="voice")

@@ -8,7 +8,7 @@
 
 设计要点：
     * `seq` 是全局自增主键，也是「已读游标」的唯一依据（部署文档 §3「每群 last_read_seq」）
-    * 每个群/私聊用 `scope` 区分：`group:1000000003` / `private:1000000002`
+    * 每个群/私聊用 `scope` 区分：`group:1000000004` / `private:1000000002`
     * 归一化失败绝不能影响消息入库（原始 JSON 兜底），感知层不能成为生产链路的故障点
 """
 
@@ -206,7 +206,7 @@ def normalize_message(
     display_name: str | None = None,
     sender_card: str | None = None,
 ) -> str:
-    """把一条消息事件压成一行：`[群:示例群] 19:47 [主人]：晚上好`
+    """把一条消息事件压成一行：`[群:示例群B] 19:47 [星漩]：晚上好`
 
     规则：
       * @机器人 → `@Persona`（让她明确知道自己被点名）
@@ -591,6 +591,19 @@ async def kv_set(key: str, value: str) -> None:
         (key, value, now_ts()),
     )
     await db.commit()
+
+
+async def recent_scopes(limit: int = 30) -> list[dict[str, Any]]:
+    """按最近决策时间列出已知 scope（控制台 /scopes 用）。"""
+    db = _db()
+    rows = await (
+        await db.execute(
+            "SELECT scope, group_name, last_decision_at, last_speak_at FROM scopes "
+            "ORDER BY COALESCE(last_decision_at, 0) DESC, updated_at DESC LIMIT ?",
+            (max(1, min(int(limit or 30), 100)),),
+        )
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 async def stats() -> dict[str, Any]:

@@ -52,6 +52,8 @@ class Settings:
     bot_qq: str
     owner_qq: str
     debug_routes: bool
+    debug_sendfile: bool
+    browser_login_hosts: tuple[str, ...]
     bili_proxy: str
     mimo_model_asr: str
     mimo_model_flash: str
@@ -103,6 +105,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     bot_qq = _first(e, "FISHTANK_BOT_QQ", "BOT_QQ")
     owner_qq = _first(e, "FISHTANK_OWNER_QQ", "PERSONA_OWNER_QQ")
     debug_routes = _first(e, "FISHTANK_DEBUG_ROUTES", default="0").lower() in {"1", "true", "yes", "on"}
+    # /debug/sendfile 是"绕过人格决策直接发文件"的高危开关，单独一个变量，默认关闭。
+    debug_sendfile = _first(e, "FISHTANK_DEBUG_SENDFILE", default="0").lower() in {"1", "true", "yes", "on"}
+    # 允许复用浏览器登录态的域名（通用抓取默认用无登录态的隔离 context）。
+    browser_login_hosts = tuple(
+        x.strip().lower()
+        for x in _first(
+            e,
+            "FISHTANK_BROWSER_LOGIN_HOSTS",
+            default="user.qzone.qq.com,qzone.qq.com,bilibili.com,b23.tv",
+        ).split(",")
+        if x.strip()
+    )
     bili_proxy = _first(e, "FISHTANK_BILI_PROXY", "PERSONA_BILI_PROXY", default="http://172.18.0.1:13120")
     mimo_model_asr = _first(e, "FISHTANK_MIMO_MODEL_ASR", default="mimo-v2.5-asr")
     mimo_model_flash = _first(e, "FISHTANK_MIMO_MODEL_FLASH", default="mimo-v2.6-flash")
@@ -161,6 +175,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         bot_qq=bot_qq,
         owner_qq=owner_qq,
         debug_routes=debug_routes,
+        debug_sendfile=debug_sendfile,
+        browser_login_hosts=browser_login_hosts,
         bili_proxy=bili_proxy,
         mimo_model_asr=mimo_model_asr,
         mimo_model_flash=mimo_model_flash,

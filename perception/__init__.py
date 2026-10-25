@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from nonebot import logger
 from nonebot.params import CommandArg
 from nonebot.rule import Rule
 
-from . import bridge, bus, sender, sticker, triggers
+from . import bridge, bus, console, sender, sticker, triggers
 from .settings import SETTINGS
 
 require("nonebot_plugin_apscheduler")  # 仅用于声明依赖关系（本插件不用它的调度）
@@ -46,6 +47,26 @@ _DEBUG_APIS = frozenset({
     "get_status",
     "get_version_info",
 })
+
+
+def _client_ip(request) -> str:
+    """取请求来源 IP（容器内直连时就是真实来源；不信任 X-Forwarded-For）。"""
+    client = getattr(request, "client", None)
+    return str(getattr(client, "host", "") or "")
+
+
+def _debug_allowed(request) -> bool:
+    """debug 路由只允许回环/私网来源（生产端口只映射到 127.0.0.1，容器内网另有地址）。
+
+    2026-10-25 安全复核：debug 路由即使有 token，也不该对任意来源开放——
+    token 一旦泄露，/debug/sendfile 等于绕过人格决策的发文件通道。
+    """
+    raw = _client_ip(request)
+    try:
+        ip = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback or ip.is_private)
 
 
 def _bili_action_text(action: str, result: dict) -> str:
@@ -161,6 +182,33 @@ async def _handle_private(bot: Bot, event: MessageEvent) -> None:
         return
     logger.debug(f"[perception] 私聊接管生效 scope={scope}")
     await triggers.request(scope, "private", "有人私聊你，单独跟你说话")
+
+
+# ── 控制台（2026-10-25：另一个 QQ 号用私聊命令控制她）────────────────────────
+# 只认白名单 QQ + 私聊 + / 开头的已知命令；其余私聊内容照常交给人格。
+def _console_rule(event: MessageEvent) -> bool:
+    if not isinstance(event, PrivateMessageEvent):
+        return False
+    try:
+        text = event.get_plaintext()
+    except Exception:  # noqa: BLE001
+        return False
+    return console.should_handle(str(event.user_id), text)
+
+
+_console = on_message(priority=44, block=True, rule=Rule(_console_rule))
+
+
+@_console.handle()
+async def _handle_console(bot: Bot, event: PrivateMessageEvent) -> None:
+    scope = bus.scope_of(event)
+    if not scope:
+        return
+    reply = await console.dispatch(event.get_plaintext())
+    try:
+        await sender.send_notice(bot, scope, reply)
+    except Exception:  # noqa: BLE001
+        logger.exception("[perception] 控制台回复发送失败")
 
 
 # ── 运维状态命令 ─────────────────────────────────────────────────────────────
@@ -635,6 +683,9 @@ def _register_qzone_routes() -> None:
             return JSONResponse({"ok": False, "error": "debug routes disabled"}, status_code=404)
         if not _ok(request):
             return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        if not _debug_allowed(request):
+            logger.warning(f"[perception] 拒绝来源 {_client_ip(request)} 的 debug 请求")
+            return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
         body = await request.json()
         api = str(body.get("api") or "")
         if api not in _DEBUG_APIS:
@@ -906,10 +957,14 @@ def _register_qzone_routes() -> None:
         """直连发送一个文件（仅本地运维测试用，token 保护）：绕过决策验证 sender/NapCat。"""
         from fastapi.responses import JSONResponse
 
-        if not SETTINGS.debug_routes:
-            return JSONResponse({"ok": False, "error": "debug routes disabled"}, status_code=404)
+        # 高危开关：默认关闭；打开也只允许回环/私网来源，且必须带 token。
+        if not SETTINGS.debug_sendfile:
+            return JSONResponse({"ok": False, "error": "debug sendfile disabled"}, status_code=404)
         if not _ok(request):
             return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+        if not _debug_allowed(request):
+            logger.warning(f"[perception] 拒绝来源 {_client_ip(request)} 的 debug sendfile")
+            return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
         try:
             body = await request.json()
         except Exception:  # noqa: BLE001

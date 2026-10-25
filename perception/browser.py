@@ -37,11 +37,13 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
 from nonebot import logger
 
+from . import netguard
 from .settings import SETTINGS
 
 
@@ -91,6 +93,74 @@ async def _connect():
     return _pw, browser, ctx
 
 
+# ── 出站守卫（2026-10-25 安全复核）────────────────────────────────────────────
+# 通用网页抓取默认不携带登录态：隔离 context + 路由守卫，任何内网/回环/链路本地
+# 地址（包括重定向后、子资源）一律 abort。只有白名单登录域才复用常驻 context。
+_LOGIN_HOSTS = tuple(SETTINGS.browser_login_hosts) or ("user.qzone.qq.com", "qzone.qq.com", "bilibili.com", "b23.tv")
+
+
+def _host_of(url: str) -> str:
+    """取 URL 主机名（小写、去掉末尾点）；解析失败返回空串。"""
+    try:
+        return (urlsplit(str(url or "")).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return ""
+
+
+def _is_login_url(url: str) -> bool:
+    """是否属于需要登录态的域（QZone/B 站）。"""
+    host = _host_of(url)
+    return bool(host) and any(host == h or host.endswith("." + h) for h in _LOGIN_HOSTS)
+
+
+def _verify_url(url: str) -> netguard.Decision:
+    """白名单登录域 + 公网 http(s)，端口只放 80/443。"""
+    return netguard.check_url(url, allow_hosts=_LOGIN_HOSTS, ports=netguard.DEFAULT_PORTS)
+
+
+async def _guard_route(route: Any) -> None:
+    """路由守卫：页面导航/子资源/重定向的每一跳都过一遍地址策略。"""
+    req_url = str(route.request.url or "")
+    if req_url.startswith(("data:", "blob:", "about:")):
+        return await route.continue_()
+    decision = netguard.check_url(req_url, ports=None)
+    if decision.ok:
+        return await route.continue_()
+    logger.warning(f"[perception] 浏览器拦截出站请求：{req_url[:120]}（{decision.reason}）")
+    return await route.abort()
+
+
+async def _open_page(url: str) -> tuple[Any, Any, bool]:
+    """打开页面，返回 (context, page, 是否隔离 context)。
+
+    登录域 → 常驻 context（有 QZone/B 站 cookie）；其余 → 新建无存储 context
+    并挂路由守卫，避免任意网页碰到内网或浏览器里的登录态。
+    """
+    _pw, browser, persistent = await _connect()
+    if _is_login_url(url):
+        page = await persistent.new_page()
+        # 登录域也挂逐跳守卫：域名本身可信，但页面里的重定向/子资源仍可能指向内网。
+        await page.route("**/*", _guard_route)
+        return persistent, page, False
+    ctx = await browser.new_context()
+    await ctx.route("**/*", _guard_route)
+    return ctx, await ctx.new_page(), True
+
+
+async def _close_page(page: Any, ctx: Any, isolated: bool) -> None:
+    """关页面；隔离 context 顺手销毁（cookie/缓存不落盘）。"""
+    if page is not None:
+        try:
+            await page.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if isolated and ctx is not None:
+        try:
+            await ctx.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def screenshot(
     url: str,
     *,
@@ -101,23 +171,31 @@ async def screenshot(
 ) -> dict[str, Any]:
     """用常驻 Chromium 打开网页并截图，写到 exports 供她发邮件/发文件。
 
-    返回 {ok, path, view_path, url, bytes, full_page}；失败返回 {ok: False, error}。
+    安全：先过 netguard（公网 http(s)、80/443）；通用页面走隔离 context；
+    跳转后的最终 URL 再校验一次。返回 {ok, path, view_path, url, bytes, full_page}。
     """
-    if not re.match(r"^https?://", str(url or ""), re.I):
-        return {"ok": False, "error": "url 必须是 http(s)"}
+    url = str(url or "").strip()
+    decision = _verify_url(url)
+    if not decision.ok:
+        logger.warning(f"[perception] 截图拒绝：{url[:120]}（{decision.reason}）")
+        return {"ok": False, "error": f"url 被拒绝：{decision.reason}"}
     width = max(320, min(int(width or 1280), 3840))
     height = max(240, min(int(height or 900), 2160))
     wait_ms = max(0, min(int(wait_ms or 2500), 15000))
     page = None
+    ctx = None
+    isolated = False
     try:
-        pw, browser, ctx = await _connect()
-        page = await ctx.new_page()
+        ctx, page, isolated = await _open_page(url)
         try:
             await page.set_viewport_size({"width": width, "height": height})
             await page.bring_to_front()
         except Exception:  # noqa: BLE001
             pass
         await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+        final = _verify_url(page.url)
+        if not final.ok:
+            return {"ok": False, "error": f"跳转后的地址被拒绝：{final.reason}"}
         await page.wait_for_timeout(wait_ms)
         png = await page.screenshot(full_page=bool(full_page), timeout=30000)
         if not png:
@@ -143,11 +221,7 @@ async def screenshot(
         logger.warning(f"[perception] 网页截图失败 {url}: {exc}")
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     finally:
-        if page is not None:
-            try:
-                await page.close()
-            except Exception:  # noqa: BLE001
-                pass
+        await _close_page(page, ctx, isolated)
 
 
 async def _frames_text(page) -> str:
@@ -194,7 +268,7 @@ async def _first_feed(page, timeout_s: int = 14):
     """等第一条说说出现，返回 (frame, li.f-single)；找不到返回 (None, None)。
 
     说说列表在页面主 frame 里（实测），但保留遍历所有 frame 的写法，
-    防止 QZone 以后又换回 g_iframe 结构（旧页面可能用 iframe）。
+    防止 QZone 以后又换回 g_iframe 结构（2026-10-17 那次就是在 iframe 里）。
     """
     deadline = asyncio.get_event_loop().time() + timeout_s
     while asyncio.get_event_loop().time() < deadline:
@@ -243,6 +317,11 @@ async def open_text(url: str, wait_ms: int = 4000) -> dict[str, Any]:
     B 站视频页特殊处理：页面正文里有一半是推荐位，直接给她看会淹没重点；
     改为走 bili_info 的结构化摘要（标题/UP/简介/数据）。取不到再退回整页正文。
     """
+    url = str(url or "").strip()
+    decision = _verify_url(url)
+    if not decision.ok:
+        logger.warning(f"[perception] 读网页拒绝：{url[:120]}（{decision.reason}）")
+        return {"ok": False, "error": f"url 被拒绝：{decision.reason}"}
     if _is_bili_target(url):
         info = await bili_resolve(url)
         if info:
@@ -255,11 +334,16 @@ async def open_text(url: str, wait_ms: int = 4000) -> dict[str, Any]:
                 "chars": len(text),
                 "bili": info,
             }
+    page = None
+    ctx = None
+    isolated = False
     try:
-        _pw_, browser, ctx = await _connect()
-        page = await ctx.new_page()
+        ctx, page, isolated = await _open_page(url)
         try:
             await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            final = _verify_url(page.url)
+            if not final.ok:
+                return {"ok": False, "error": f"跳转后的地址被拒绝：{final.reason}"}
             await page.wait_for_timeout(wait_ms)
             title = await page.title()
             text = await _frames_text(page)
@@ -268,7 +352,7 @@ async def open_text(url: str, wait_ms: int = 4000) -> dict[str, Any]:
             body = "\n".join(lines)
             return {"ok": True, "title": title, "url": page.url, "text": body[:6000], "chars": len(body)}
         finally:
-            await page.close()
+            await _close_page(page, ctx, isolated)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[perception] 浏览器打开失败 {url}: {exc}")
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

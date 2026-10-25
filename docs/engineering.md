@@ -5,11 +5,11 @@
 
 ## 1. 现在有什么
 
-- `tests/`：24 个 `unittest` 用例，跑在**真实 NoneBot 容器**里（不是 mock 假环境）。
+- `tests/`：63 个 `unittest` 用例 + 11 个 Node 用例，跑在**真实 NoneBot 容器**里（不是 mock 假环境）；2026-10-25 起测试对象是**当前工作区代码**（复制到容器 `/tmp/fishtank-code`），不是已部署旧版本。
 - `scripts/test.sh`：一键执行
   1. Python 语法编译
-  2. Node 语法检查（bridge + 所有 persona 工具）
-  3. 单元测试（本机无 Docker 时自动 ssh `your-server`，在 `qqbot-nonebot` 容器跑）
+  2. Node 语法检查 + `bridge/netguard.test.mjs`（地址策略/重定向/限流/内容类型）
+  3. 单元测试（本机无 Docker 时自动 ssh `your-server`，在 `qqbot-nonebot` 容器跑当前工作区代码）
   4. `git diff --check`
 - 覆盖的模块：
   - `segments`：空消息判定、@ 名字、引用抑制、媒体锚点

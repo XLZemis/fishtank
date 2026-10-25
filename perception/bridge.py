@@ -159,6 +159,27 @@ async def fetch_media(media_id: int | str, url: str, ext: str = "jpg") -> dict[s
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
+async def stage_file(path: str, name: str = "") -> dict[str, Any]:
+    """把 /persona/refs|stickers|media 下的文件复制到 /persona/out（发文件用）。
+
+    为什么不在感知层直接读：感知层容器只挂了 exports/db/config 等目录，
+    看不到 /persona/refs；桥跑在人格容器里，能安全地做白名单校验 + 复制。
+    """
+    token = _token()
+    if not token:
+        return {"ok": False, "error": "missing bridge token"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{BRIDGE_URL}/file/stage",
+                json={"path": str(path or ""), "name": str(name or "")},
+                headers={"authorization": f"Bearer {token}"},
+            )
+            return resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 async def read_media_file(media_id: int | str) -> tuple[bytes, str]:
     """读回桥缓存的媒体字节（她要转手发出去时用），返回 (data, ext)"""
     token = _token()

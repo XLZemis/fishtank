@@ -22,6 +22,11 @@ class TestSettings(unittest.TestCase):
         self.assertEqual("mimo-v2.5-tts", s.tts_model)
         self.assertEqual("冰糖", s.tts_voice)
         self.assertEqual(120, s.recall_max_age_seconds)
+        # 2026-10-25 安全复核：高危 debug 开关必须默认关闭
+        self.assertFalse(s.debug_routes)
+        self.assertFalse(s.debug_sendfile)
+        self.assertIn("qzone.qq.com", s.browser_login_hosts)
+        self.assertIn("bilibili.com", s.browser_login_hosts)
 
     def test_overrides_and_derived_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

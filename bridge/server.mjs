@@ -26,6 +26,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { fetchGuarded } from './netguard.mjs';
+
 // ── 配置（全部来自容器环境变量，compose.yaml 里声明） ──────────────────────────
 function envFirst(...names) {
   for (const name of names) {
@@ -60,6 +62,14 @@ const MAX_MESSAGES = Number(envFirst('FISHTANK_MAX_MESSAGES', 'PERSONA_MAX_MESSA
 const MAX_MESSAGE_CHARS = Number(envFirst('FISHTANK_MAX_MESSAGE_CHARS', 'PERSONA_MAX_MESSAGE_CHARS') || 200);
 const MAX_BODY_BYTES = Number(envFirst('FISHTANK_BRIDGE_MAX_BODY_BYTES') || 256 * 1024);
 const MEDIA_MAX_BYTES = Number(envFirst('FISHTANK_MEDIA_MAX_BYTES') || 30 * 1024 * 1024);
+// 媒体类型白名单：只允许图片/音视频（content-type 缺失时用魔数兜底）
+const MEDIA_TYPES = ['image/', 'video/', 'audio/', 'application/octet-stream'];
+// 文件中转：把 /persona/refs、/persona/stickers、/persona/media 下的文件复制到 /persona/out，
+// 让 NapCat 能读到（感知层容器看不到这些目录，也不应该在感知层开任意读）。
+const OUT_DIR = process.env.PERSONA_OUT_DIR || '/persona/out';
+const REFS_DIR = process.env.PERSONA_REFS_DIR || '/persona/refs';
+const STAGE_ROOTS = [REFS_DIR, STICKER_ROOT, MEDIA_DIR];
+const STAGE_MAX_BYTES = Number(envFirst('FISHTANK_STAGE_MAX_BYTES') || 24 * 1024 * 1024);
 
 // ── 小工具 ────────────────────────────────────────────────────────────────────
 /** 追加一行带时间戳的日志（写到持久卷，方便事后排查） */
@@ -707,11 +717,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── 媒体取回：把群消息里的图片/视频下载到 /persona/media/<id>.<ext> ────────
-  // 她看图的物理前提；URL 来自 NapCat（腾讯 CDN，带签名，会过期）
+  // 她看图的物理前提；URL 来自 NapCat（腾讯 CDN，带签名，会过期）。
+  // 2026-10-25：改为受限下载——每跳校验地址策略、流式限量、content-type/魔数校验。
   if (req.method === 'POST' && url.pathname === '/media/fetch') {
     if (!tokenOk(req.headers.authorization)) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    let bodySize = 0;
+    req.on('data', (c) => {
+      bodySize += c.length;
+      if (bodySize > 64 * 1024) {
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', async () => {
       let payload = {};
       try {
@@ -728,20 +747,88 @@ const server = http.createServer(async (req, res) => {
       const target = path.join(MEDIA_DIR, `${id}.${ext}`);
       try {
         fs.mkdirSync(MEDIA_DIR, { recursive: true });
-        const resp = await fetch(src, { redirect: 'follow', signal: AbortSignal.timeout(20000) });
-        if (!resp.ok) return sendJson(res, 502, { ok: false, error: `upstream ${resp.status}` });
-        const buf = Buffer.from(await resp.arrayBuffer());
-        if (buf.length === 0) return sendJson(res, 502, { ok: false, error: 'empty body' });
-        if (buf.length > MEDIA_MAX_BYTES) return sendJson(res, 413, { ok: false, error: 'too large' });
-        fs.writeFileSync(target, buf);
-        log(`[media] 取回 ${id} ${buf.length}B -> ${target}`);
+        const got = await fetchGuarded(src, {
+          maxBytes: MEDIA_MAX_BYTES,
+          maxHops: 3,
+          allowContentTypes: MEDIA_TYPES,
+          timeoutMs: 20000,
+        });
+        fs.writeFileSync(target, got.buf);
+        log(`[media] 取回 ${id} ${got.bytes}B -> ${target}`);
         return sendJson(res, 200, {
-          ok: true, id, path: target, bytes: buf.length,
-          content_type: resp.headers.get('content-type') || '',
+          ok: true, id, path: target, bytes: got.bytes,
+          content_type: got.contentType || '',
+          final_url: got.finalUrl,
         });
       } catch (err) {
-        log(`[media] 取回失败 ${id}: ${String(err)}`);
-        return sendJson(res, 502, { ok: false, error: String(err) });
+        const code = err && err.code ? err.code : 'upstream';
+        const status = code === 'blocked' ? 403 : code === 'limit' ? 413 : 502;
+        log(`[media] 取回失败 ${id}（${code}）: ${String(err && err.message ? err.message : err)}`);
+        return sendJson(res, status, { ok: false, error: String(err && err.message ? err.message : err), code });
+      }
+    });
+    return undefined;
+  }
+
+  // ── 文件中转：refs / stickers / media → /persona/out（发文件前的白名单中转）────
+  // 只允许这三个目录里的真实文件；realpath 校验目录边界（防符号链接逃逸），
+  // 复制后 chmod 644，NapCat（uid 1000）同路径可读。
+  if (req.method === 'POST' && url.pathname === '/file/stage') {
+    if (!tokenOk(req.headers.authorization)) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+    const chunks = [];
+    let bodySize = 0;
+    req.on('data', (c) => {
+      bodySize += c.length;
+      if (bodySize > 64 * 1024) {
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      let payload = {};
+      try {
+        payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+      } catch {
+        return sendJson(res, 400, { ok: false, error: 'invalid json' });
+      }
+      const rawPath = String(payload.path || '').trim();
+      if (!rawPath) return sendJson(res, 400, { ok: false, error: 'need path' });
+      let real;
+      try {
+        real = fs.realpathSync(rawPath);
+      } catch {
+        return sendJson(res, 404, { ok: false, error: 'file not found' });
+      }
+      const roots = STAGE_ROOTS.map((r) => path.resolve(r));
+      const hit = roots.find((root) => real === root || real.startsWith(root + path.sep));
+      if (!hit) {
+        log(`[stage] 拒绝越界路径：${rawPath.slice(0, 120)} -> ${real.slice(0, 120)}`);
+        return sendJson(res, 403, { ok: false, error: 'path not allowed' });
+      }
+      let st;
+      try {
+        st = fs.statSync(real);
+      } catch {
+        return sendJson(res, 404, { ok: false, error: 'file not found' });
+      }
+      if (!st.isFile()) return sendJson(res, 400, { ok: false, error: 'not a regular file' });
+      if (st.size > STAGE_MAX_BYTES) {
+        return sendJson(res, 413, { ok: false, error: `too large (>${STAGE_MAX_BYTES})` });
+      }
+      try {
+        fs.mkdirSync(OUT_DIR, { recursive: true });
+        const base = (path.basename(real) || 'file').replace(/[^0-9A-Za-z._\-\u4e00-\u9fa5]/g, '_').slice(0, 40) || 'file';
+        const digest = crypto.createHash('sha1').update(`${real}|${Date.now()}`).digest('hex').slice(0, 10);
+        const name = `staged-${digest}-${base}`;
+        const dest = path.join(OUT_DIR, name);
+        fs.copyFileSync(real, dest);
+        fs.chmodSync(dest, 0o644);
+        log(`[stage] ${real} -> ${dest} (${st.size}B)`);
+        return sendJson(res, 200, { ok: true, out_path: `/persona/out/${name}`, bytes: st.size });
+      } catch (err) {
+        log(`[stage] 复制失败：${String(err)}`);
+        return sendJson(res, 500, { ok: false, error: String(err) });
       }
     });
     return undefined;

@@ -107,3 +107,22 @@ FISHTANK_SMTP_FROM=xxx@qq.com
 | `FISHTANK_RECALL_MAX_AGE_S` | `120`（QQ 普通成员撤回窗口） |
 
 TTS key 复用 `/data/qqbot/config/mimo.key`；不额外配置。
+
+## 出站安全 / 浏览器（2026-10-25）
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `FISHTANK_DEBUG_ROUTES` | `0` | 只读 debug 路由总开关；生产为 1，且只接受回环/私网来源 + token |
+| `FISHTANK_DEBUG_SENDFILE` | `0` | `/debug/sendfile` 高危开关（绕过人格决策直接发文件），默认关闭 |
+| `FISHTANK_BROWSER_LOGIN_HOSTS` | `user.qzone.qq.com,qzone.qq.com,bilibili.com,b23.tv` | 允许复用浏览器登录态的域；其余网页走隔离 context（无 cookie） |
+| `FISHTANK_MEDIA_MAX_BYTES` | `31457280`（30MB） | 桥 `/media/fetch` 流式上限，超限即中断 |
+| `FISHTANK_STAGE_MAX_BYTES` | `25165824`（24MB） | 桥 `/file/stage` 单文件上限（refs/stickers/media → out） |
+
+## 控制台（2026-10-25）
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `FISHTANK_CONSOLE_QQS` | 空（关闭） | 允许私聊发控制台命令的 QQ（逗号分隔）。只认 `/` 开头的已知命令；其它私聊照常交给人格 |
+
+命令：`/help` `/status` `/stats [小时]` `/pause <scope> [分钟]` `/resume <scope>` `/scopes`。
+scope 形状：`group:<群号>` 或 `private:<QQ>`。
