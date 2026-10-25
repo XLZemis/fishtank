@@ -18,7 +18,7 @@ test('isBlockedIp 拒绝内网/回环/链路本地/元数据地址', () => {
 });
 
 test('isBlockedIp 放行公网地址', () => {
-  for (const ip of ['1.1.1.1', '8.8.8.8', 'your-server', '2606:4700:4700::1111']) {
+  for (const ip of ['1.1.1.1', '8.8.8.8', '8.8.4.4', '2606:4700:4700::1111']) {
     assert.equal(isBlockedIp(ip), false, `${ip} 应放行`);
   }
 });
